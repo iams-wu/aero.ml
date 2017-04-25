@@ -299,7 +299,7 @@ let parse p =
 	 let s = lexwsseq s in
 	 let left_seq , s = lexterm
 *)
-      | '\206' :: '\187' :: [] ->
+      | '\206' :: '\187' :: [] | '\\' :: [] ->
 	let s = lexwsseq s in
 	let run , s = lexargs ['.'] s ((Token TFun) :: run) in
 	let s = lexwsseq s in

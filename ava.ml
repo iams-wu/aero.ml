@@ -168,7 +168,7 @@ type token = Lparen | Rparen | Rec | Notrec | TLet | In | TFun | TApp | Idsend
 type element = Lex of lex | Token of token  | Tree of tree
 
 let parse p =
-  let lexws x = x = ' ' || x = '\n' || x = '\t' in
+  let lexws x = x = ' ' || x = '\n' || x = '\t' || x = '\r' in
 
   let lexid x = not (lexws x) in
   
@@ -214,10 +214,24 @@ let parse p =
 	   []
 	 else
 	   s
-	  
-      | x :: y :: s ->
+
+      | [ x ; y ] ->
+	 if lexws x then
+	   lexwsseq [ y ]
+	 else
+	   s
+	   
+      | x :: y :: z :: s ->
 	if lexws x then
-	  lexwsseq (y :: s) 
+	  lexwsseq (y :: z :: s)
+	else if x = '~' && y = '~' && z = '~' then
+	  let rec fe s =
+	    match s with
+	    | '~' :: '~' :: '~' :: s -> lexwsseq s
+	    | _ :: s -> fe s
+	    | [] -> []
+	  in
+	  fe s	  
 	else if x = '~' && y = '~' then
 	  let rec fe s = 
 	    match s with
@@ -227,7 +241,7 @@ let parse p =
 	  in 
 	  fe s
 	else
-	  x :: y :: s
+	  x :: y :: z :: s
   in
 
   let rec lexargs delim s run =    

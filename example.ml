@@ -1,7 +1,7 @@
-let [] n c = n in
-let ~::~ h t n c = c h t in
+let [] [] ~::~ = [] in
+let ~::~ h t [] ~::~ = h :: t in
 
-~~ rewrite ( ~ :: ~ ) :: ~ -> ~ :: ( ~ :: ~ ) in
+rewrite ( ~ :: ~ ) :: ~ -> ~ :: ( ~ :: ~ ) in
 
 let false f t = f in
 let true f t = t in
@@ -27,5 +27,5 @@ let rec map f list =
   list [] cons
 in
 
-str_list str_bool ( map not ( ~::~ false ( ~::~ true ( ~::~ false ( ~::~ true ( ~::~ false ( ~::~ true [] ) ) ) ) ) ) )
+str_list str_bool ( map not ( false :: true :: false :: true :: false :: true :: false :: true :: false :: [] ) )
 

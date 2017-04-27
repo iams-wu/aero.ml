@@ -1,3 +1,11 @@
 let false true false = false in
 let true true false = true in
-true
+
+let [] :: [] = [] in
+let ~::~ h t ~::~ [] = h :: t in
+
+rewrite ( ~ :: ~ ) :: ~ → ~ :: ( ~ :: ~ ) in
+
+true :: false :: true :: []
+
+

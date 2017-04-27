@@ -11,13 +11,28 @@ let isprimitive name =
   | "~&&~" -> true
   | "~||~" -> true
   | "~^~" -> true
-  | "putword" -> true
+  | "sha3" -> true
+  | "address" -> true
+  | "balance" -> true
+  | "origin" -> true
+  | "caller" -> true
+  | "callvalue" -> true
+  | "gasprice" -> true
+  | "blockhash" -> true
+  | "coinbase" -> true
+  | "timestamp" -> true
+  | "number" -> true
+  | "difficulty" -> true
+  | "gaslimit" -> true
+  | "gas" -> true
   | _ -> false
 ;;
 
 let primarity name =
   match name with
-  | "putword" -> 1
+  | "address" | "origin" | "caller" | "callvalue" | "gasprice" | "coinbase"
+  | "timestamp" | "number" | "difficulty" | "gaslimit" | "gas" -> 0
+  | "balance" | "blockhash" -> 1
   | _ -> 2
 ;;
 
@@ -158,12 +173,13 @@ type term =
   | Fun of string list * term
   | Fin of string
   | Paren of term
-
+  | Rewrite of term * term * term
+      
 type tree = Term of term | Stringlist of string list | String of string | Bool of bool
 
 type lex = Id of string | TFin of string
 
-type token = Lparen | Rparen | Rec | Notrec | TLet | In | TFun | TApp | Idsend 
+type token = Lparen | Rparen | Rec | Notrec | TLet | In | TFun | TApp | Idsend | TRewrite
 
 type element = Lex of lex | Token of token  | Tree of tree
 
@@ -257,18 +273,37 @@ let parse p =
 	  let s = lexwsseq s in
 	  lexargs delim s ((Lex (Id id)) :: run)
   in
-(*
-  let rec lexhead delim s run =
-    match s with
-    | [] -> run , []
 
+    let rec lexhead delims s run =
+    let s = lexwsseq s in
+    let idseq, s = lexidseq s in
+    match idseq with
     | '(' :: [] ->
        let s = lexwsseq s in
-       
-       
-       
+       lexhead delims s ((Token Lparen) :: run)
+
+    | [] ->
+       List.rev run, []
+	  
+    | _ ->
+       let id = stringof idseq in
+       let s = lexwsseq s in
+       _lexhead delims s ((Lex (TFin id)) :: run)	  
+
+  and _lexhead delims s run =
+    let s = lexwsseq s in
+    let idseq, s' = lexidseq s in
+    match idseq with
+    | ')' :: [] ->
+       _lexhead delims s' ((Token Rparen) :: run)
+
+    | x when List.mem x delims ->
+       run, s'
+	 
+    | _ ->
+       lexhead delims s (Token TApp :: run)
   in
-*)
+
   let rec lexterm s run =
     let s = lexwsseq s in
     let idseq , s = lexidseq s in
@@ -295,10 +330,15 @@ let parse p =
 	    lexterm s run
 	)
 
-(*      | 'r' :: 'e' :: 'w' :: 'r' :: 'i' :: 't' :: 'e' :: [] ->
+      | 'r' :: 'e' :: 'w' :: 'r' :: 'i' :: 't' :: 'e' :: [] ->
 	 let s = lexwsseq s in
-	 let left_seq , s = lexterm
-*)
+	 let left_rewrite_delims = [['-';'>'];['\226';'\134';'\146']] in
+	 let run, s = lexhead left_rewrite_delims s (Token TRewrite :: run) in
+	 let s = lexwsseq s in
+	 let right_rewrite_delims = [['i';'n']] in
+	 let run, s = lexhead right_rewrite_delims s run in
+	 lexterm s (Token In :: run)
+
       | '\206' :: '\187' :: [] | '\\' :: [] ->
 	let s = lexwsseq s in
 	let run , s = lexargs ['.'] s ((Token TFun) :: run) in
@@ -378,6 +418,10 @@ let parse p =
 	  let tail = Tree(Term(Paren term)) :: tail in
 	  build tail head prev 
 	    
+	| Token TRewrite :: Tree(Term lterm) :: Tree(Term rterm) :: Token In :: Tree (Term where) :: head ->
+	   let tail = Tree(Term(Rewrite(lterm, rterm, where))) :: tail in
+	   build tail head prev
+
 	| Lex (Id id) :: head ->
 	  let tail = Tree(String id) :: tail in
 	  build tail head prev 
@@ -408,14 +452,17 @@ let parse p =
 	(
 	  match App ( applyrrs l , applyrrs r ) with
 	  | App ( Let ( ir , n , args , st , nt ) , r ) ->
-	    applyrrs ( Let ( ir , n , args , st , App ( nt , r ) ) )
+	     applyrrs ( Let ( ir , n , args , st , App ( nt , r ) ) )
 
 	  | App ( Fun ( args , st ) , r ) ->
 	     applyrrs ( Fun ( args , App ( st , r ) ) )
 	      
 	  | App( l, App ( r1 , r2 ) ) ->
-	    applyrrs ( App ( App ( l , r1 ) , r2 ) )
+	     applyrrs ( App ( App ( l , r1 ) , r2 ) )
 
+	  | App (Rewrite (l, r, t), x) ->
+	     applyrrs (Rewrite (l, r, App(t, x)))
+	      
 	  | t -> t
 	)
 
@@ -424,7 +471,11 @@ let parse p =
 
       | Paren ( t ) -> Paren ( applyrrs t )
 
-      | x -> x
+      | Rewrite (l, r, t) ->
+	 Rewrite (applyrrs l, applyrrs r, applyrrs t)
+
+      | Fin x ->
+	  Fin x
   in
   
   let build = build run in 
@@ -443,8 +494,7 @@ let filename () =
     "lib.ml"
 ;;
 
-let parse () = 
-  let filename = filename () in 
+let parse filename = 
   let ic = open_in filename in
   let iclen = in_channel_length ic in
   let contents = Bytes.create iclen in
@@ -452,10 +502,6 @@ let parse () =
   let _ = close_in ic in
   parse contents
 ;;
-
-let tree , build = parse () ;;
-
-
 
 (* ------------------------------------------------------------------------------------------------------------------*)
 (*                                  ava.ml lambda lifting and recursion closure                                      *) 
@@ -514,7 +560,7 @@ let string_of_table table =
   header ^ body
 ;;
 
-let prep term yrec =
+let prep term =
   let isrecursive name recmap = 
     if IMap.mem name recmap then
       IMap.find name recmap
@@ -540,28 +586,24 @@ let prep term yrec =
     | Let ( isrec , name , args , subterm , nexterm ) ->
        let subbound =
 	 if isrec then
-	   IMap.add name true bound
+	   let kvpl = List.map (fun x -> x , true) (name :: args) in
+	   add_all kvpl bound
 	 else
-	   bound
+	   let kvpl = List.map (fun x -> x , true) args in
+	   add_all kvpl bound
        in
        let bound =
 	 IMap.add name true bound 
        in
-       if yrec then
-	 let subrecmap = add name isrec recmap in
-	 let subterm = prep subterm subrecmap subbound in
-	 if isrec then
-	   let nexterm = Let ( false , name , args , applify name (name :: args) , nexterm ) in 
-	   let nexterm = prep nexterm recmap bound in
-	   Let ( false , name , name :: args , subterm , nexterm ) 
-	 else
-	   let nexterm = prep nexterm recmap bound in
-	   Let ( isrec , name , args , subterm , nexterm )
-       else
-	 let subterm = prep subterm recmap subbound in
+       let subrecmap = add name isrec recmap in
+       let subterm = prep subterm subrecmap subbound in
+       if isrec then
+	 let nexterm = Let ( false , name , args , applify name (name :: args) , nexterm ) in 
 	 let nexterm = prep nexterm recmap bound in
-	 Let ( isrec , name , args , subterm , nexterm  )
-	   
+	 Let ( false , name , name :: args , subterm , nexterm ) 
+       else
+	 let nexterm = prep nexterm recmap bound in
+	 Let ( isrec , name , args , subterm , nexterm )
 
     | Fun ( args , subterm ) ->
        let term = Let ( false , "~~" , args , subterm , Fin "~~" ) in
@@ -592,11 +634,96 @@ let prep term yrec =
     | Paren (term) ->
        prep term recmap bound
 
+
+    | Rewrite ( left, right, term ) ->
+       let left = prep left recmap bound in
+       let right = prep right recmap bound in
+       let term = prep term recmap bound in
+       Rewrite ( left, right, term)
   in
   prep 
     term
     IMap.empty
     IMap.empty
+;;
+
+let rec rreq term rl =
+  match term, rl with
+  | App (l, r) , App(rll, rlr) ->
+     rreq l rll && rreq r rlr
+
+  | _ , Fin "~" ->
+     true
+
+  | Fin x, Fin y when x = y ->
+     true
+
+  | _ -> false
+;;
+
+let rreq term rrr = rreq term (fst rrr) ;;
+
+let rec match_left acc term rl =
+  match term, rl with
+  | App (l, r), App(ll, rr) ->
+     match_left (match_left acc r rr) l ll
+
+  | x, Fin "~" ->
+     x :: acc
+
+  | _ ->
+     acc
+;;
+
+let rec rewrite rr xs =
+  match rr with
+  | App (l, r) ->
+     let l, xs = rewrite l xs in
+     let r, xs = rewrite r xs in
+     App (l, r), xs
+
+  | Fin "~" ->
+     List.hd xs, List.tl xs
+
+  | x ->
+     x, xs
+;;
+
+let rewrite term rrr =
+  rewrite (snd rrr) (match_left [] term (fst rrr)) |> fst
+;;
+
+let rec apply_rewrites rewriterules term =
+  match term with
+  | Rewrite (left, right, term) ->
+     apply_rewrites ((left,right) :: rewriterules) term
+
+  | Let (isrec, name, args, subterm, nexterm) ->
+     let subterm = apply_rewrites rewriterules subterm in
+     let nexterm = apply_rewrites rewriterules nexterm in
+     Let (isrec, name, args, subterm, nexterm)
+
+  | Fun (args, subterm) ->
+     let subterm = apply_rewrites rewriterules subterm in
+     Fun (args, subterm)
+
+  | App (l, r) when List.exists (rreq term) rewriterules ->
+     (
+       List.find (rreq term) rewriterules 
+	 |> rewrite term
+	 |> apply_rewrites rewriterules
+     )
+
+  | App (l, r) ->
+     let l = apply_rewrites rewriterules l in
+     let r = apply_rewrites rewriterules r in
+     App (l, r)
+
+  | Fin x ->
+     Fin x
+
+  | Paren term ->
+     apply_rewrites rewriterules term
 ;;
 
 let stringdecl string = 
@@ -867,8 +994,31 @@ let tableau term =
     | Fin fin -> 
        free , tables , find_source sources fin :: appsources , instrs , index 
 
-    | Paren _ -> 
-       free , tables , appsources , instrs , index
+    | Paren term -> 
+       tableau
+	 term
+	 path
+	 sources
+	 level
+	 scoped
+	 free
+	 tables
+	 appsources
+	 instrs
+	 index
+
+    | Rewrite (left, right, term) ->
+       tableau
+	 term
+	 path
+	 sources
+	 level
+	 scoped
+	 free
+	 tables
+	 appsources
+	 instrs
+	 index
   in
   
   let free , tables , appsources , instrs , index = 
@@ -908,7 +1058,13 @@ let tableau term =
   List.rev (main :: tables)
 ;;
 
-let tables = prep tree true |> tableau ;;
+let tables =
+  parse (filename ())
+  |> fst
+  |> prep
+  |> apply_rewrites []
+  |> tableau
+;;
 
 let writeprogram translation =
   let filename = filename () in

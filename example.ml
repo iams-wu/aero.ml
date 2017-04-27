@@ -1,31 +1,34 @@
-let [] [] ~::~ = [] in
-let ~::~ h t [] ~::~ = h :: t in
+let false t f = f in
+let true t f = t in
 
-rewrite ( ~ :: ~ ) :: ~ -> ~ :: ( ~ :: ~ ) in
-
-let false f t = f in
-let true f t = t in
 let str_bool bool =
-  bool "false" "true"
+  bool "true" "false"
 in
+
+let not bool = bool false true in
+
+let [] ~::~ [] = [] in
+let ~::~ h t ~::~ [] = h :: t in
+rewrite ( ~ :: ~ ) :: ~ → ~ :: ( ~ :: ~ ) in
 
 let rec str_list str list =
   let [] = "[]" in
-  let cons h t =
+  let ~::~ h t =
     ( str h ) ^ " :: " ^ ( str_list str t )
   in
-  list [] cons
+  list ~::~ []
 in
-
-let not bool = bool true false in
 
 let rec map f list =
   let [] = [] in
-  let cons h t =
-    ~::~ ( f h ) ( map f t )
+  let ~::~ h t =
+    ( f h ) :: ( map f t )
   in
-  list [] cons
+  list ~::~ []
 in
 
-str_list str_bool ( map not ( false :: true :: false :: true :: false :: true :: false :: true :: false :: [] ) )
+let ~|>~ x y = y x in
 
+( true :: false :: true :: false :: true :: false :: true :: false :: true :: [] )
+|> ( map not )
+|> ( str_list str_bool )

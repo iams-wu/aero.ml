@@ -3344,7 +3344,7 @@ let compile tables =
       load_call;
       header;
       ops;
-      loader;
+      loader
     ]
 ;;
 
@@ -3552,8 +3552,6 @@ if program size exceeds size addressable by 32 bit unsigned it, load_call needs 
 
 
 todo:
-
-inline rewriting  --- "rr" keyword
 
 native proof
 

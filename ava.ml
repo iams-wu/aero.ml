@@ -1,6 +1,7 @@
 let isprimitive name = 
   match name with
   | "~+~" -> true
+  | "~=~" -> true
   | "~*~" -> true
   | "~-~" -> true
   | "~/~" -> true
@@ -136,7 +137,7 @@ let unique existing proposed =
 
 let unquote string =
   if isstring string  then
-    String.sub string 1 (String.length string - 2)
+   String.sub string 1 (String.length string - 2)
   else
     string
 ;;
@@ -174,6 +175,8 @@ type term =
   | Fin of string
   | Paren of term
   | Rewrite of term * term * term
+  | Match of term * ( ( term * term ) list )
+
       
 type tree = Term of term | Stringlist of string list | String of string | Bool of bool
 
@@ -462,7 +465,7 @@ let parse p =
 
 	  | App (Rewrite (l, r, t), x) ->
 	     applyrrs (Rewrite (l, r, App(t, x)))
-	      
+
 	  | t -> t
 	)
 
@@ -476,6 +479,9 @@ let parse p =
 
       | Fin x ->
 	  Fin x
+
+      | Match ( what, withs ) ->
+	 Match ( applyrrs what, List.map (fun (l, r) -> applyrrs l, applyrrs r) withs )
   in
   
   let build = build run in 
@@ -640,6 +646,11 @@ let prep term =
        let right = prep right recmap bound in
        let term = prep term recmap bound in
        Rewrite ( left, right, term)
+
+    | Match ( what, withs ) ->
+       let what = prep what recmap bound in
+       let withs = List.map (fun (l,r) -> prep l recmap bound, prep r recmap bound) withs in
+       Match (what, withs)
   in
   prep 
     term
@@ -724,6 +735,11 @@ let rec apply_rewrites rewriterules term =
 
   | Paren term ->
      apply_rewrites rewriterules term
+
+  | Match (what, withs) ->
+     let what = apply_rewrites rewriterules what in
+     let withs = List.map (fun (l,r) -> apply_rewrites rewriterules l, apply_rewrites rewriterules r) withs in
+     Match (what, withs)
 ;;
 
 let stringdecl string = 
@@ -736,7 +752,174 @@ let stringdecl string =
 	App ( App ( Fin "cons" , Fin (string_of_int (int_of_char c))) , form chars decl )
   in
   form (charlistof (String.sub string 1 (String.length string - 2))) (Fin "nil")
-;;  
+;;
+let get_core head = 
+  match head with
+  | Fin core -> core
+  | _ -> "~"
+;;
+
+let rec linearize_apps acc term =
+  match term with
+  | App ( left , right ) ->
+     linearize_apps (right :: acc) left
+       
+  | x ->
+     (get_core x) , acc
+;;
+
+let linearize_apps term = linearize_apps [] term
+
+let rec match_constructor_list reference proposal acc =
+  match reference, proposal with
+  | [] , [] ->
+     []
+
+  | r :: reference, p :: proposal when r = p ->
+     match_constructor_list
+       reference
+       proposal
+       (r :: acc)
+
+  | _ ->
+     List.rev acc
+;;
+
+let constructor_set ctors =
+  let rec ct ctors reference =
+    match ctors with
+    | (core, args) :: ctors ->
+       let reference = match_constructor_list reference (List.rev args) [] in
+       if List.mem core reference then 
+	 ct ctors reference
+       else
+	 []
+       
+    | [] ->
+       List.rev reference
+  in
+  
+  List.hd ctors
+  |> snd
+  |> List.rev
+  |> ct (List.tl ctors)
+;;
+
+let rec filter_out predicate _in _out list =
+  match list with
+  | [] ->
+     _in, _out
+
+  | x :: xs ->
+     if predicate x then
+       filter_out predicate (x :: _in) _out list
+     else
+       filter_out predicate _in (x :: _out) list
+     
+
+;;
+
+let filter_out predicate = filter_out predicate [] [] ;;
+
+let rec take_pre_h reference list =
+  match reference with
+  | [] -> List.rev list
+  | x :: xs ->
+     take_pre_h xs (List.tl list)
+;;
+
+let take_pre reference list = take_pre_h reference (List.rev list)
+
+let rec app_all_h what tos =
+  match tos with
+  | [] -> what
+  | x :: tos ->
+     app_all_h (App ( what, x )) tos
+;;
+  
+let app_all what tos = app_all_h what (List.rev tos)
+
+let desugar_matches term =
+  let rec dm argmap term = 
+    match term with
+    | Match ( what, withs ) ->
+       let rec generate_term what withs =
+	 let ctors_ref =
+	   (List.map
+	      (fun (core,_,_) -> core,IMap.find core argmap)
+	      withs) |>
+	       constructor_set
+	 in
+	 let withs, wildcards = filter_out (fun (core, _, _) -> List.mem core ctors_ref) withs in
+	 let rec proc ctors withs =
+	   match ctors with
+	   | [] ->
+	      app_all what (List.map (fun x -> Fin x) ctors_ref)
+
+	   | ctor :: ctors ->
+	      let args = take_pre ctors_ref (IMap.find ctor argmap) in	      
+	      let ctormatches, withs = filter_out (fun (core, _, _) -> core = ctor) withs in
+	      match ctormatches with
+	      | [] ->
+		 let subterm =
+		   match wildcards with
+		   | [] ->
+		      Fun (["~~"], Fin "~~")
+		      
+		   | (_,_,x) :: _ -> x
+		 in
+		 let nexterm = proc ctors withs in
+		 Let ( false, ctor, args, subterm, nexterm)
+
+	      | _ ->
+		 let subterm =
+		   Fin "TODO"
+		 in
+		 let nexterm = proc ctors withs in
+		 Let ( false, ctor, args, subterm, nexterm )
+	 in
+	 proc ctors_ref	withs
+       in
+       let withs = 
+	 List.map
+	   (fun (left, right) ->
+	     let core, args = linearize_apps left in
+	     core, args, right)
+	   withs
+       in
+       generate_term what withs
+	 
+    | Let ( isrec, name, args, subterm, nexterm ) ->
+       let subterm = dm argmap subterm in
+       let argmap = IMap.add name args argmap in
+       let nexterm = dm argmap nexterm in
+       Let ( isrec, name, args, subterm, nexterm )
+
+    | Fun ( args, subterm ) ->
+       let subterm = dm argmap subterm in
+       Fun ( args, subterm )
+
+    | App ( left, right ) ->
+       let left = dm argmap left in
+       let right = dm argmap right in
+       App ( left, right )
+
+    | Fin x ->
+       Fin x
+
+    | Rewrite ( l, r, where ) ->
+       let l = dm argmap l in
+       let r = dm argmap r in
+       let where = dm argmap where in
+       Rewrite ( l, r, where )
+
+    | Paren t ->
+       Paren ( dm argmap t )
+  in
+  dm
+    IMap.empty
+    term
+;;
 
 let rec find_source source_map name = 
   if IMap.mem name source_map then
@@ -978,7 +1161,7 @@ let tableau term =
        free , tables , appsources , instrs , index
 
     | Fun ( args , term ) -> 
-       let term = Let ( false , "anon" , args , term , Fin "anon" ) in
+       let term = Let ( false , "~~" , args , term , Fin "~~" ) in
        tableau
 	 term
 	 path
@@ -994,31 +1177,14 @@ let tableau term =
     | Fin fin -> 
        free , tables , find_source sources fin :: appsources , instrs , index 
 
-    | Paren term -> 
-       tableau
-	 term
-	 path
-	 sources
-	 level
-	 scoped
-	 free
-	 tables
-	 appsources
-	 instrs
-	 index
+    | Paren term ->
+       free, tables, appsources, instrs, index
 
     | Rewrite (left, right, term) ->
-       tableau
-	 term
-	 path
-	 sources
-	 level
-	 scoped
-	 free
-	 tables
-	 appsources
-	 instrs
-	 index
+       free, tables, appsources, instrs, index
+
+    | Match (what, withs) ->
+       free, tables, appsources, instrs, index
   in
   
   let free , tables , appsources , instrs , index = 
@@ -1509,6 +1675,28 @@ let primop prim =
   match prim with
   | "~+~" -> ADD
   | "~*~" -> MUL
+  | "~-~" -> SUB
+  | "~/~" -> DIV
+  | "~%~" -> MOD
+  | "~**~" -> EXP
+  | "~<~" -> LT
+  | "~>~" -> GT
+  | "~&&~" -> AND
+  | "~||~" -> OR
+  | "sha3" -> SHA3
+  | "address" -> ADDRESS
+  | "balance" -> BALANCE
+  | "origin" -> ORIGIN
+  | "caller" -> CALLER
+  | "callvalue" -> CALLVALUE
+  | "gasprice" -> GASPRICE
+  | "blockhash" -> BLOCKHASH
+  | "coinbase" -> COINBASE
+  | "timestamp" -> TIMESTAMP
+  | "number" -> NUMBER
+  | "difficulty" -> DIFFICULTY
+  | "gaslimit" -> GASLIMIT
+  | "gas" -> GAS
   | _ -> STOP
 ;;
 
@@ -2132,6 +2320,168 @@ let compile tables =
 	 in
 	 dep_ops, ops
 	   
+      | "~=~" ->
+	 let dep_ops = dependencies_get dep_ops [ "info"; "true"; "false" ] compile in
+	 let ops =
+	   let _1 =
+	     let _1_1 =
+	       [| (* ..., :caller, !memory, !args *)
+		 JUMPDEST;
+		 DUP1;
+		 MLOAD;
+		 SWAP1;
+		 PUSH1;
+		 Data 32;
+		 ADD;
+		 MLOAD;
+	       |]
+	     in
+	     let _1_2 = push (line_lookup "info") in
+	     let _1_3 =
+	       [|
+		 SWAP1;
+		 PC;
+		 PUSH1;
+		 Data 6;
+		 ADD;
+		 SWAP2;
+		 JUMP;		 
+	       |]
+	     in
+	     let _1_4 =
+	       [|
+		 JUMPDEST; (* ..., :caller, !memory, ~l, ~r, !r_flags, !r_sat, !r_nargs *)
+		 SWAP2;
+		 POP;
+		 POP;
+		 PUSH1;
+		 Data 2;
+		 ADD; (* ..., :caller, !memory, ~l, ~r, !size *)
+	       |]
+	     in
+	     Array.concat [ _1_1; _1_2; _1_3; _1_4 ]	     
+	   in
+	   let _2 =
+	     let _2_1 =
+	       [|
+		 JUMPDEST; (* ..., :caller, !memory, ~l, ~r, !size *)
+		 DUP1;
+	       |]
+	     in
+	     let _2_3 =
+	       [|
+		 PC;
+		 ADD;
+		 JUMPI;
+		 POP;
+		 POP;
+		 POP;
+		 DUP1;
+		 PUSH1;
+		 Data 2;
+		 PUSH6;
+		 Data 1;
+		 Data 0;
+		 Data 0;
+		 Data 0;
+		 Data 0;
+		 Data 0;
+		 MUL;
+		 DUP2;
+		 MSTORE;
+		 PUSH1;
+		 Data 32;
+		 ADD;
+	       |]
+	     in
+	     let _2_4 = push (line_lookup "true") in
+	     let _2_5 =
+	       [|
+		 DUP2;
+		 MSTORE;
+		 PUSH1;
+		 Data 96;
+		 ADD;
+		 SWAP2;
+		 JUMP;
+	       |]
+	     in
+	     let _2_2 = push (Array.length _2_3 + Array.length _2_4 + Array.length _2_5) in
+	     Array.concat [ _2_1; _2_2; _2_3; _2_4; _2_5 ]
+	   in
+	   let _3 =
+	     let _3_1 =
+	       [|
+		 JUMPDEST; (* ..., :caller, !memory, ~l, ~r, !size *)
+		 PUSH1;
+		 Data 1;
+		 SWAP1;
+		 SUB;
+		 SWAP1;
+		 DUP1;
+		 MLOAD;
+		 SWAP1;
+		 PUSH1;
+		 Data 32;
+		 ADD; (* ..., :caller, !memory, ~l, !size--, !r_i, ~r++*)
+		 SWAP3;
+		 DUP1;
+		 MLOAD;
+		 SWAP1;
+		 PUSH1;
+		 Data 32;
+		 ADD; (* ..., :caller, !memory, ~r++, !size--, !r_i, !l_i, ~l++ *)
+		 SWAP3;
+		 SWAP2; (* ..., :caller, !memory, ~r++, ~l++, !size--, !l_i, !r_i *)
+		 EQ; (* ..., :caller, !memory, ~r++, ~l++, !size--, !l_i = !r_i *)
+		 PC;
+	       |]
+	     in
+	     let _3_2 = push (Array.length _3_1 + Array.length _2 - 1) in
+	     let _3_3 =
+	       [|
+		 SWAP1;
+		 SUB;
+		 JUMPI;
+		 POP;
+		 POP;
+		 POP;
+		 DUP1;
+		 PUSH1;
+		 Data 2;
+		 PUSH6;
+		 Data 1;
+		 Data 0;
+		 Data 0;
+		 Data 0;
+		 Data 0;
+		 Data 0;
+		 MUL;
+		 DUP2;
+		 MSTORE;
+		 PUSH1;
+		 Data 32;
+		 ADD;
+	       |]
+	     in
+	     let _3_4 = push (line_lookup "false") in
+	     let _3_5 =
+	       [|
+		 DUP2;
+		 MSTORE;
+		 PUSH1;
+		 Data 96;
+		 ADD;
+		 SWAP2;
+		 JUMP;
+	       |]
+	     in
+	     Array.concat [ _3_1; _3_2; _3_3; _3_4; _3_5 ]
+	   in
+	   Array.concat [ _1; _2; _3 ]
+	 in
+	 dep_ops, ops	   
+
       | "~^~" ->
 	 let dep_ops = dependencies_get dep_ops ["copy";"expand"] compile in
 	 let ops =
@@ -3344,7 +3694,7 @@ let compile tables =
       load_call;
       header;
       ops;
-      loader
+      loader;
     ]
 ;;
 
@@ -3553,15 +3903,17 @@ if program size exceeds size addressable by 32 bit unsigned it, load_call needs 
 
 todo:
 
-native proof
-
-pattern matching
+expaned primitive support
 
 unicode exponentiation
+
+pattern matching
 
 argument pruning
 
 inline parsing
+
+native proof
 
 garbage collection
 

@@ -528,8 +528,14 @@ let string_of_src src =
     | Arg i -> "arg " ^ (string_of_int i)
     | Literal n -> "literal " ^ (string_of_int n)
     | Global g -> g
-    | Primitive n -> n
+    | Primitive n -> "primtive " ^ n
     | Hstring n -> n
+;;
+
+let can_be_arg src =
+  match src with
+  | Primitive _ | Global _ -> false
+  | _ -> true
 ;;
 
 type instr = 
@@ -994,12 +1000,12 @@ let tableau term =
 		 instrs
 		 index
 	    with
-	    | free , tables , [ x ] , instrs , index ->
+	    | free , tables , [ src ] , instrs , index when can_be_arg src ->
 	       linapp
 		 left
 		 free
 		 tables
-		 ( x :: acc )
+		 ( src :: acc )
 		 instrs
 		 index
 		 
@@ -1110,7 +1116,7 @@ let tableau term =
 
        let tables =
 	 match subappsources with
-	 | [ src ] ->
+	 | [ src ] -> 
 	    Table (
 	      global,
 	      List.length subscoped,
@@ -2224,7 +2230,7 @@ let compile tables =
 	   Array.concat [ _1; _2; _3; _4; _5 ]
 	 in
 	 dep_ops, ops
-
+	   
       | "expand" ->
 	 let dep_ops = dependencies_get dep_ops ["eval"] compile in
 	 let ops =
@@ -2325,19 +2331,48 @@ let compile tables =
 	 let ops =
 	   let _1 =
 	     let _1_1 =
-	       [| (* ..., :caller, !memory, !args *)
-		 JUMPDEST;
-		 DUP1;
+	       [|
+		 JUMPDEST; (* ..., :caller, !memory, !args *)
+	       |]
+	     in
+	     let _1_2 = push (line_lookup "eval") in
+	     let _1_3 =
+	       [|
+		 DUP3;
+		 DUP3;
 		 MLOAD;
-		 SWAP1;
+		 PC;
+		 PUSH1;
+		 Data 6;
+		 ADD;
+		 SWAP3;
+		 JUMP;
+		 JUMPDEST; (* ..., :caller, !memory, !args, !memory', ~arg_1 *)
+		 SWAP3;
+		 POP;		 
+	       |]
+	     in
+	     let _1_4 = push (line_lookup "eval") in
+	     let _1_5 =
+	       [|
+		 SWAP2;
 		 PUSH1;
 		 Data 32;
 		 ADD;
 		 MLOAD;
+		 PC;
+		 PUSH1;
+		 Data 6;
+		 ADD;
+		 SWAP3;
+		 JUMP;
+		 JUMPDEST; (* ..., :caller, ~arg_i, !memory, ~arg_0 *)
+		 SWAP1;
+		 SWAP2;
 	       |]
 	     in
-	     let _1_2 = push (line_lookup "info") in
-	     let _1_3 =
+	     let _1_6 = push (line_lookup "info") in
+	     let _1_7 =
 	       [|
 		 SWAP1;
 		 PC;
@@ -2348,7 +2383,7 @@ let compile tables =
 		 JUMP;		 
 	       |]
 	     in
-	     let _1_4 =
+	     let _1_8 =
 	       [|
 		 JUMPDEST; (* ..., :caller, !memory, ~l, ~r, !r_flags, !r_sat, !r_nargs *)
 		 SWAP2;
@@ -2359,7 +2394,7 @@ let compile tables =
 		 ADD; (* ..., :caller, !memory, ~l, ~r, !size *)
 	       |]
 	     in
-	     Array.concat [ _1_1; _1_2; _1_3; _1_4 ]	     
+	     Array.concat [ _1_1; _1_2; _1_3; _1_4; _1_5; _1_6; _1_7; _1_8 ]	     
 	   in
 	   let _2 =
 	     let _2_1 =
@@ -2768,7 +2803,7 @@ let compile tables =
 	      in
 	      ops
 		
-	   | Arg i :: body ->
+	  | Arg i :: body ->
 	      let ops =
 		let _1 =
 		  [| (* ..., :caller, !memory, !args, !locals, !local_index, ~head *)
@@ -2947,7 +2982,7 @@ let compile tables =
 	      in
 
 	      ops	      
-		
+
 	   | [] ->
 	      [| (* ..., :caller, !memory, !args, !locals, !local_index, ~ref *)
 		SWAP1;

@@ -972,6 +972,15 @@ let tableau term =
 	   (index + 1)
 	   acc
 
+      | Primitive p :: appsources ->
+	 let instrs = Ap ( Primitive p , [] ) :: instrs in
+	 let acc = Local index :: acc in
+	 declare 
+	   appsources
+	   instrs
+	   (index + 1)
+	   acc
+
       | source :: appsources ->
 	 declare 
 	   appsources
@@ -1000,7 +1009,7 @@ let tableau term =
 		 instrs
 		 index
 	    with
-	    | free , tables , [ src ] , instrs , index when can_be_arg src ->
+	    | free , tables , [ src ] , instrs , index ->
 	       linapp
 		 left
 		 free

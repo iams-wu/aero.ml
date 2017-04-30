@@ -1699,7 +1699,7 @@ let pushx x =
   | 31 -> PUSH31
   | 32 -> PUSH32
   | _ ->
-     let _ = print_string "larger than 32bit literals not supported " in
+     let _ = print_string "larger than 32byte literals not supported " in
      let _ = flush () in
      STOP
 ;;

@@ -129,7 +129,7 @@ let unionmap m1 m2 =
     m2
 ;;
 
-let cat list delim =
+let cat delim list =
   let rec cat xs =
     match xs with
     | [] -> ""
@@ -204,9 +204,9 @@ type token = Lparen | Rparen | Rec | Notrec | TLet | In | TFun | TApp | Idsend |
 
 type element = Lex of lex | Token of token  | Tree of tree
 
+let lexws x = x = ' ' || x = '\n' || x = '\t' || x = '\r' ;;
+    
 let parse p =
-  let lexws x = x = ' ' || x = '\n' || x = '\t' || x = '\r' in
-
   let lexid x = not (lexws x) in
   
   let rec lexidseq s run = 
@@ -586,7 +586,7 @@ let string_of_table table =
   let nlocals = nlocals instrs in
   let header = "table " ^ name ^ " " ^ (string_of_int nargs) ^ " 0 " ^ (string_of_int nlocals) ^ ":\n" in
   
-  let body = cat (List.flatten (List.map string_of_instr instrs)) "\n" in
+  let body = cat "\n" (List.flatten (List.map string_of_instr instrs)) in
   header ^ body
 ;;
 
@@ -836,9 +836,9 @@ let rec filter_out predicate _in _out list =
 
   | x :: xs ->
      if predicate x then
-       filter_out predicate (x :: _in) _out list
+       filter_out predicate (x :: _in) _out xs
      else
-       filter_out predicate _in (x :: _out) list
+       filter_out predicate _in (x :: _out) xs
      
 
 ;;
@@ -1100,7 +1100,7 @@ let tableau term =
 
        let sublevel = level + 1 in
 
-       let global = unique free (cat (List.rev subpath) "_") in
+       let global = unique free (cat "_" (List.rev subpath) ) in
 
        let levelargs = (List.map
 			  (fun a -> (string_of_int level) ^ "_" ^ a)
@@ -1277,7 +1277,7 @@ let writeprogram translation =
   let prefix = prefix namechars in
   let outfilename = stringof (prefix @ ['c';'e';'m']) in
   let oc = open_out outfilename in
-  let s = cat (List.map string_of_table translation) "\n\n" in
+  let s = cat "\n\n" (List.map string_of_table translation) in
   let _ = output_string oc s in 
   let _ = close_out oc in 
   outfilename
@@ -3762,7 +3762,7 @@ let compile tables =
 
 let ethereum_human_readable_compile tables =
   let program = compile tables in
-  Array.to_list program |> List.map strop |> (fun p -> cat p "\n") |> print_string
+  Array.to_list program |> List.map strop |> cat"\n" |> print_string
 ;;
 
 let ehrc = ethereum_human_readable_compile ;;
@@ -3787,7 +3787,7 @@ var test = test_contract.new(
   {
     from: web3.eth.accounts[0],
     data: '" ^
-    (Array.to_list program |> List.map opcodes |> List.map hr_byte |> fun l -> cat ("0x" :: l) "") ^ "'
+    (Array.to_list program |> List.map opcodes |> List.map hr_byte |> fun l -> cat "" ("0x" :: l)) ^ "'
     gas: '4700000'
   },
   function (e, contract){
@@ -3889,7 +3889,7 @@ let disassemble hex =
   hex
   |> charlistof |> List.map Char.escaped |> List.map (fun x -> "0x" ^ x) 
   |> List.map int_of_string |> Array.of_list |> (fun arr -> bundle arr 2 0) |> List.map (fun x -> code (byte_of_hex x))
-  |> List.map strop |> (fun l -> cat l "\n") |> print_string
+  |> List.map strop |> cat "\n" |> print_string
 ;;
 
 
@@ -3948,36 +3948,145 @@ let process_arg arg =
 ;;
 
 
-(*  REPL  *)
+let rec take acc n list =
+  match list with
+  | _ when n <= 0 ->
+      List.rev acc
 
-let repl () =
-  let _ = print_string
-    
-"
-If the program is interactive, make it output a short notice like this
-when it starts in an interactive mode:
-
-    Gnomovision version 69, Copyright (C) year name of author
-    Gnomovision comes with ABSOLUTELY NO WARRANTY; for details type `show w'.
-    This is free software, and you are welcome to redistribute it
-    under certain conditions; type `show c' for details.
-
-The hypothetical commands `show w' and `show c' should show the appropriate
-parts of the General Public License.  Of course, the commands you use may
-be called something other than `show w' and `show c'; they could even be
-mouse-clicks or menu items--whatever suits your program.
-"
-    
-  in
-  ()
+  | [] ->
+     List.rev acc
+       
+  | x :: xs ->
+      take ( x :: acc ) ( n - 1 ) xs
 ;;
 
+let take = take [] ;;
 
+let lines c =
+  match c with
+  | '\n' | '\r' -> true
+  | _ -> false
+;;
 
-Array.iter
-  process_arg
-  Sys.argv
+let rec wstrim flip xs =
+  match xs with
+  | x :: xs when lexws x ->
+     wstrim true xs
+
+  | _ when flip ->
+     wstrim false (List.rev xs)
+
+  | _ ->
+     xs
+;;
+
+let wstrim = wstrim true ;;
+
+let shellify cs =
+  cs
+  |> List.rev      
+  |> filter_out lines
+  |> snd
+  |> wstrim
+  |> stringof
+;;
+
+(*  AERO  *)
+
+let version = "1.0.1.0" ;;
+
+let aero () =
+  let preamble () = 
+    print_string ("
+ava.ml version " ^ version ^ "
   
+gnu licence 2.0
+
+README.ml for details
+
+
+
+experimental shell
+
+
+
+")
+
+  in
+
+  let help () =
+    print_string "
+help prints out this message
+create
+"
+  in
+  
+
+  let _ = preamble () in
+  let _ = print_string ">" in
+  let _ = flush () in
+  
+  let orea cs =
+    match shellify cs with
+    | "show c" | "show w" | "ava.ml" | "aero" | "aero ()" ->
+       let _ = preamble () in
+       let _ = print_string ">" in
+       cs
+	 
+    | "help" ->
+       let _ = help () in
+       let _ = flush () in
+       cs
+	 
+    | "create" ->
+       let _ = print_string "contract creation not yet supported in repl" in
+       cs
+	   
+    | x ->
+       cs
+  in
+  
+  
+  let rec aero cs =
+    try
+      let rec get_input cs =
+	try
+	  match take 2 cs with
+	  | [ '\n' ; '\n' ] ->
+	     let _ = orea cs in
+	     let _ = print_string ">" in
+	     let _ = flush () in
+	     get_input ['\222']
+
+	  | [ '\n' ; '\222' ] ->
+	     ()
+	       
+	  | [ '\n' ; _ ] | [ '\n' ] ->
+	     let _ = print_string ">" in
+	     let _ = flush () in
+	     get_input (List.tl cs)
+	       
+	  | _ ->
+	     get_input ( input_char stdin :: cs )
+	with
+	  _ ->
+	    let _ = orea cs in
+	    ()
+      in
+      get_input cs
+    with
+      _ -> aero []
+  in
+
+  aero []
+;;
+
+match Array.length (Sys.argv) with
+| x when x < 2 -> aero ()
+| _ ->
+   Array.iter
+     process_arg
+     Sys.argv
 
 (* 
 

@@ -1,3 +1,21 @@
+(* 
+    ava.ml
+
+    This program, hereby known as "The Program" is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License Version 2 published
+    in year June 1991
+
+    This program is distributed in the hope that it will be useful,
+    but without any warranty; without even the implied warranty of
+    merchantability or fitness for a particular purpose.
+
+    contact @yithump
+
+    copyleft -- april 2017    
+*)
+
+
+
 let isprimitive name = 
   match name with
   | "~+~" -> true
@@ -3928,6 +3946,33 @@ let process_arg arg =
   with
     _ -> ()
 ;;
+
+
+(*  REPL  *)
+
+let repl () =
+  let _ = print_string
+    
+"
+If the program is interactive, make it output a short notice like this
+when it starts in an interactive mode:
+
+    Gnomovision version 69, Copyright (C) year name of author
+    Gnomovision comes with ABSOLUTELY NO WARRANTY; for details type `show w'.
+    This is free software, and you are welcome to redistribute it
+    under certain conditions; type `show c' for details.
+
+The hypothetical commands `show w' and `show c' should show the appropriate
+parts of the General Public License.  Of course, the commands you use may
+be called something other than `show w' and `show c'; they could even be
+mouse-clicks or menu items--whatever suits your program.
+"
+    
+  in
+
+;;
+
+
 
 Array.iter
   process_arg

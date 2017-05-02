@@ -1,5 +1,5 @@
 ~~~
-  ava.ml
+  aero.ml
 
     This program, hereby known as "The Program" is free software; you can redistribute it and/or modify
 it under the terms
@@ -47,7 +47,7 @@ let ~,~ = pair in
 
 
 
-let ava = "A --- dialectically ML --- Programming Language" in
+let aero = "A --- dialectically ML --- Programming Language" in
 
 let supported_platforms = "Ethereum Virtual Machine" :: [] in
 
@@ -57,18 +57,18 @@ let recommended_dependencies = "emacs" :: "tuareg" :: [] in
 
 let how_to_install =
   1 , "sudo apt-get install " ^ ( cat " " dependencies ) ^ ( cat " " recommended_dependencies ) ::
-    2 , "git clone https://github.com/yithump/ava.ml" ::
+    2 , "git clone https://github.com/yithump/aero.ml" ::
       []
 in
 
 let how_to_run =
   "Ethereum Backend" ,
-  "ocaml ava.ml file.ml --web3"
+  "ocaml aero.ml file.ml --web3"
   ::
     []
 in
 
-ava
+aero
 
 
 
@@ -76,7 +76,7 @@ ava
   ~~~
   example
 
-  (bash)$ ocaml ava.ml example.ml
+  (bash)$ ocaml aero.ml example.ml
   
   (geth)$ loadScript example.js
   (geth)$ test.run.call ()

@@ -14,7 +14,7 @@
     copyleft -- april 2017    
 *)
 
-
+let version = "1.0.2.0" ;;
 
 let isprimitive name = 
   match name with
@@ -61,6 +61,8 @@ let primarity name =
 
 module IMap = Map.Make(String)
 
+let emptymap = IMap.empty ;;
+  
 let charlistof s =
   let rec clo i run =
     if i < 0 then run 
@@ -172,7 +174,7 @@ let add_all kvpl map =
 ;; 
 
 let instantiate_map kvpl = 
-  add_all kvpl IMap.empty
+  add_all kvpl emptymap
 ;;
 
 let rec repeat x n =
@@ -181,6 +183,80 @@ let rec repeat x n =
   else
     x :: repeat x (n-1)
 ;;
+
+let rec take acc n list =
+  match list with
+  | _ when n <= 0 ->
+      List.rev acc
+
+  | [] ->
+     List.rev acc
+       
+  | x :: xs ->
+      take ( x :: acc ) ( n - 1 ) xs
+;;
+
+let take = take [] ;;
+
+let lines c =
+  match c with
+  | '\n' | '\r' -> true
+  | _ -> false
+;;
+
+let lexline = function
+  | '\n' | '\r' -> true
+  | _ -> false
+;;
+
+let lexws = function
+  | ' ' | '\t' -> true
+  | x -> lexline x
+;;
+
+let rec wstrim flip xs =
+  match xs with
+  | x :: xs when lexws x ->
+     wstrim true xs
+
+  | _ when flip ->
+     wstrim false (List.rev xs)
+       
+  | _ ->
+     xs
+;;
+
+let wstrim = wstrim true ;;
+
+let rec rescape acc already xs =
+  match xs with
+  | x :: xs when lexws x -> (
+    match already with
+    | true  -> rescape acc true xs
+    | false -> rescape ( ' ' :: acc ) true xs
+  )
+
+  | x :: xs -> rescape (x :: acc) false xs
+
+  | [] -> List.rev acc
+	
+;;
+
+let rescape = rescape [] false ;;
+
+let rec prefix cs =
+  match cs with
+  | '.' :: cs ->
+     cs |> List.rev |> stringof
+
+  | _ :: cs ->
+     prefix cs
+       
+  | [] ->
+     ""
+;;
+
+let prefix infilename = infilename |> charlistof |> List.rev |> prefix ;;
 
 (* ------------------------------------------------------------------------------------------ *)
 (*                                     aero.ml syntax                                          *)
@@ -204,8 +280,6 @@ type token = Lparen | Rparen | Rec | Notrec | TLet | In | TFun | TApp | Idsend |
 
 type element = Lex of lex | Token of token  | Tree of tree
 
-let lexws x = x = ' ' || x = '\n' || x = '\t' || x = '\r' ;;
-    
 let parse p =
   let lexid x = not (lexws x) in
   
@@ -508,23 +582,7 @@ let parse p =
       applyrrs x , build
 
     | _ ->
-      Fin "Parsing error" , build
-;;
-
-let filename () =
-  if Array.length (Sys.argv) > 1 && Sys.file_exists (Sys.argv.(1)) then
-    Sys.argv.(1)
-  else
-    "lib.ml"
-;;
-
-let parse filename = 
-  let ic = open_in filename in
-  let iclen = in_channel_length ic in
-  let contents = Bytes.create iclen in
-  let _ = really_input ic contents 0 iclen in
-  let _ = close_in ic in
-  parse contents
+       Fin "Parsing Error", build
 ;;
 
 (* ------------------------------------------------------------------------------------------------------------------*)
@@ -678,8 +736,8 @@ let prep term =
   in
   prep 
     term
-    IMap.empty
-    IMap.empty
+    emptymap
+    emptymap
 ;;
 
 let rec rreq term rl =
@@ -941,7 +999,7 @@ let desugar_matches term =
        Paren ( dm argmap t )
   in
   dm
-    IMap.empty
+    emptymap
     term
 ;;
 
@@ -954,10 +1012,9 @@ let rec find_source source_map name =
     Literal (int_of_string name)
   else if isstring name then
     Hstring name
-  else ( 
-    print_string (name ^ " is not bound in sources\n");
-    Arg 0
-  )    
+  else 
+    failwith ( name ^ " is not bound in sources\n" ) 
+
 ;;
   
 let find_free free_map name =
@@ -967,7 +1024,7 @@ let find_free free_map name =
     []
 ;;
 
-let tableau term =
+let tableau sources tables term =
   let declare free sources appsources instrs index =
     let rec declare appsources instrs index acc =
       match appsources with
@@ -1027,7 +1084,7 @@ let tableau term =
 		 instrs
 		 index
 	    with
-	    | free , tables , [ src ] , instrs , index ->
+	    | free , tables , [ src ] , instrs , index, _ ->
 	       linapp
 		 left
 		 free
@@ -1036,7 +1093,7 @@ let tableau term =
 		 instrs
 		 index
 		 
-	    | free , tables , subacc , instrs , index ->
+	    | free , tables , subacc , instrs , index, _ ->
 	       let instrs , index = 
 		 declare
 		   free
@@ -1055,7 +1112,7 @@ let tableau term =
 	   )  
 
 	| Fin fin ->
-	   free , tables , find_source sources fin :: acc , instrs , index
+	   free , tables , find_source sources fin :: acc , instrs , index, sources
 
 	| other ->
 	   tableau 
@@ -1070,7 +1127,7 @@ let tableau term =
 	     instrs
 	     index
       in
-      let free , tables , acc , instrs , index = 
+      let free , tables , acc , instrs , index, _ = 
 	linapp 
 	  term 
 	  free
@@ -1130,7 +1187,7 @@ let tableau term =
 	   subsources
        in
 
-       let free , tables , subappsources , subinstrs , subindex = 
+       let free , tables , subappsources , subinstrs , subindex, _ = 
 	 tableau 
 	   subterm 
 	   subpath
@@ -1191,7 +1248,7 @@ let tableau term =
 	   index
        in
 
-       free , tables , appsources , instrs , index
+       free , tables , appsources , instrs , index, sources
 
     | Fun ( args , term ) -> 
        let term = Let ( false , "~~" , args , term , Fin "~~" ) in
@@ -1208,27 +1265,27 @@ let tableau term =
 	 index
 	 
     | Fin fin -> 
-       free , tables , find_source sources fin :: appsources , instrs , index 
+       free , tables , find_source sources fin :: appsources , instrs , index, sources
 
     | Paren term ->
-       free, tables, appsources, instrs, index
+       free, tables, appsources, instrs, index, sources
 
     | Rewrite (left, right, term) ->
-       free, tables, appsources, instrs, index
+       free, tables, appsources, instrs, index, sources
 
     | Match (what, withs) ->
-       free, tables, appsources, instrs, index
+       free, tables, appsources, instrs, index, sources
   in
   
-  let free , tables , appsources , instrs , index = 
+  let free , tables , appsources , instrs , index, sources = 
     tableau
       term
       []
-      IMap.empty
+      sources
       0
       []
-      IMap.empty
-      []
+      emptymap
+      tables
       []
       []
       0
@@ -1243,7 +1300,7 @@ let tableau term =
        let instrs , index = 
 	 declare 
 	   free
-	   IMap.empty
+	   emptymap
 	   appsources 
 	   instrs 
 	   index  
@@ -1254,33 +1311,16 @@ let tableau term =
        Table ( "main", 0, List.rev instrs ) 
   in
 
-  List.rev (main :: tables)
+  main :: tables, sources
 ;;
 
-let tables =
-  parse (filename ())
-  |> fst
-  |> prep
-  |> apply_rewrites []
-  |> tableau
-;;
-
-let writeprogram translation =
-  let filename = filename () in
-  let namechars = charlistof filename in
-  let rec prefix chars =
-    match chars with  
-      | '.' :: rest -> ['.']
-      | x :: rest -> x :: prefix rest
-      | [] -> []
-  in
-  let prefix = prefix namechars in
-  let outfilename = stringof (prefix @ ['c';'e';'m']) in
+let writeprogram translation prefix =
+  let outfilename = prefix ^  ".cem" in
   let oc = open_out outfilename in
   let s = cat "\n\n" (List.map string_of_table translation) in
   let _ = output_string oc s in 
   let _ = close_out oc in 
-  outfilename
+  ()
 ;;
 
 
@@ -1318,38 +1358,17 @@ let incr term x =
   first term
 ;;
 
-let blc4 term =
-  let peano i = 
-    let rec p i acc =
-      if i = 0 then 
-	'~' :: '|' :: acc
-      else
-	p (i-1) ('|' :: acc)
-    in
-    p i []
-  in
-
-  let rec blc4 term acc =
-    match term with
-      | L ( i , name , sub ) ->
-	blc4 sub ('l' :: acc)
-
-      | A ( left , right ) ->
-	let acc = blc4 left ('a' :: acc) in
-	blc4 right acc
+let rec lchr term =
+  match term with
+  | L ( i , name , sub ) -> "l" ^ lchr sub
+     
+  | A ( left , right ) -> "a" ^ lchr left ^ lchr right
 	
-      | F ( i , name ) ->
-	 (peano i) @ acc
+  | F ( i , name ) -> ('~' :: '|' :: repeat '|' i) |> List.rev |> stringof 
 
-      | P d ->
-	 '@' :: acc
+  | P d -> "(native " ^ d ^ ")" 
 	   
-      | O n ->
-	 '#' :: acc
-	
-  in
-  let char = blc4 term [] in
-  stringof (List.rev char)
+  | O n -> "(literal " ^ n ^ ")"
 ;;
 
 let quickreduce term laze str = 
@@ -1504,8 +1523,17 @@ let calculate tables =
 	    ( i + 1 )
 	    
 
-	| Return ( source ) :: instrs -> 
-	  find_source source sources
+	| Return ( source ) :: instrs ->
+	   match source with
+	   | Global g ->
+	      abracadabra
+		tabs
+		( IMap.find g tabs )
+		abstraction
+		sources
+	      
+	   | _ ->
+	      find_source source sources
     in
 
     let Table ( name , numargs , instrs ) = table in
@@ -1539,7 +1567,7 @@ let calculate tables =
 	  tabs
 	  main
 	  0
-	  IMap.empty
+	  emptymap
 
       | table :: tables ->
 	let Table ( name , numargs , instrs ) = table in
@@ -1550,16 +1578,12 @@ let calculate tables =
 	F (0 , "")
   in
 
-  calculate tables IMap.empty
+  calculate (List.rev tables) emptymap
 ;;
 
-let flush () = 
-  Format.printf "@."
-;;
-
-let simulate () =
+let simulate tables =
   let lambdatree = calculate tables in
-  let fin , red = quickreduce lambdatree false blc4 in
+  let fin , red = quickreduce lambdatree false lchr in
   let _ = print_string "\nnumber of beta reductions: " in
   let _ = print_string (string_of_int red) in 
   let _ = print_string "\n" in
@@ -1700,7 +1724,7 @@ let pushx x =
   | 32 -> PUSH32
   | _ ->
      let _ = print_string "larger than 32byte literals not supported " in
-     let _ = flush () in
+     let _ = flush stdout in
      STOP
 ;;
 
@@ -1772,12 +1796,12 @@ let compile tables =
       (fun uplook table ->
 	let Table(name, numargs, instrs) = table in
 	IMap.add name table uplook)
-      IMap.empty
+      emptymap
       tables
   in
 
   let line_uplook =
-    ref IMap.empty 
+    ref emptymap 
   in
 
   let headersize = 0x33 in
@@ -3023,7 +3047,7 @@ let compile tables =
 
 	   | _ ->
 	      let _ = print_string "matched primitive or global in body of application (not yet supported)" in
-	      let _ = flush () in
+	      let _ = flush stdout in
 	      [||]
 	 in
 
@@ -3616,7 +3640,7 @@ let compile tables =
 	       
 	   | [] ->
 	      let _ = print_string ("no return statement found in compilation of " ^ goal ^ " --- undefined behavior") in
-	      let _ = flush () in
+	      let _ = flush stdout in
 	      let ops =
 		let _1 = [| POP; POP; POP; JUMP |] in
 		Array.concat [ ops; _1 ]
@@ -3625,7 +3649,7 @@ let compile tables =
 
 	   | _ ->
 	      let _ = print_string "matched a return of a primitive (not yet supported)" in
-	      let _ = flush () in
+	      let _ = flush stdout in
 	      let ops =
 		let _1 = [| POP; POP; POP; JUMP |] in
 		Array.concat [ ops; _1 ]
@@ -3767,7 +3791,7 @@ let ethereum_human_readable_compile tables =
 
 let ehrc = ethereum_human_readable_compile ;;
 
-let web3_generate program =
+let web3_generate program prefix =
   let web3 = "
 personal.unlockAccount(eth.coinbase, \"\")
 var test_contract = web3.eth.contract(
@@ -3799,24 +3823,16 @@ var test = test_contract.new(
 
 "
   in
-  let filename = filename () in
-  let namechars = charlistof filename in
-  let rec prefix chars =
-    match chars with  
-      | '.' :: rest -> ['.']
-      | x :: rest -> x :: prefix rest
-      | [] -> []
-  in
-  let prefix = prefix namechars in
-  let outfilename = stringof (prefix @ ['j';'s']) in
+
+  let outfilename = prefix ^ ".js" in
   let oc = open_out outfilename in
   let _ = output_string oc web3 in 
   let _ = close_out oc in 
   ()
 ;;
 
-let web3g tables =
-  web3_generate (compile tables)
+let web3g tables prefix =
+  web3_generate (compile tables) prefix
 ;;
 
 let code = function
@@ -3896,24 +3912,21 @@ let disassemble hex =
 (* ------------------------------------------------------------------------------------------------------------------*)
 (*                                                aero.ml main execution                                              *)
 (* ------------------------------------------------------------------------------------------------------------------*)
-
 let rec args =
   ("--help", "Print out the various available options",
-   fun () -> print_help ())
+   fun tables prefix -> print_help ())
   ::
     ("--evm", "Write out human-readable EVM code to .evm file",
-   fun () -> ehrc tables)
+   fun tables prefix -> ehrc tables)
   ::
     ("--web3", "Write out EVM contract creation to a .js file",
-     fun () -> web3g tables)
+     fun tables prefix -> web3g tables prefix)
   ::
     ("--cem", "Write out the immediate representation to a .cem file",
-     fun () ->
-       let _ = writeprogram tables in
-       ())
+     fun tables prefix -> writeprogram tables prefix)
   ::
     ("--calc", "Simulate the computation using lambda calculus",
-      fun () -> simulate ())
+      fun tables prefix -> simulate tables)
 (*  ::
     ("--dis", "Dissasemble EVM bytecode",
     fun () -> disassemble hex) *)
@@ -3935,157 +3948,187 @@ let parameter_map =
   List.fold_left
     (fun map (parameter, description, execution) ->
       IMap.add parameter (description, execution) map)
-    IMap.empty
+    emptymap
     args
 ;;
 
-let process_arg arg =
+let process_arg tables prefix arg =
   try
     let  _, exe = IMap.find arg parameter_map in
-    exe ()
+    exe tables prefix
   with
     _ -> ()
 ;;
 
-
-let rec take acc n list =
-  match list with
-  | _ when n <= 0 ->
-      List.rev acc
-
-  | [] ->
-     List.rev acc
-       
-  | x :: xs ->
-      take ( x :: acc ) ( n - 1 ) xs
-;;
-
-let take = take [] ;;
-
-let lines c =
-  match c with
-  | '\n' | '\r' -> true
-  | _ -> false
-;;
-
-let rec wstrim flip xs =
-  match xs with
-  | x :: xs when lexws x ->
-     wstrim true xs
-
-  | _ when flip ->
-     wstrim false (List.rev xs)
-
-  | _ ->
-     xs
-;;
-
-let wstrim = wstrim true ;;
-
 let shellify cs =
   cs
   |> List.rev      
-  |> filter_out lines
-  |> snd
+  |> rescape
   |> wstrim
   |> stringof
 ;;
 
-(*  AERO  *)
+let filename () =
+  if Array.length (Sys.argv) > 1 && Sys.file_exists (Sys.argv.(1)) then
+    Sys.argv.(1)
+  else
+    "lib.ml"
+;;
 
-let version = "1.0.1.0" ;;
+let str_file filename = 
+  let ic = open_in filename in
+  let iclen = in_channel_length ic in
+  let contents = Bytes.create iclen in
+  let _ = really_input ic contents 0 iclen in
+  let _ = close_in ic in
+  contents
+;;
 
-let aero () =
-  let preamble () = 
-    print_string ("
+let ir str sources tables =
+  str
+  |> parse
+  |> fst
+  |> prep
+  |> apply_rewrites []
+  |> (tableau sources tables)
+;;
+
+let try_parse_singular_let s =
+  match parse s |> snd with
+  | Token TLet :: Tree(Bool isrec) :: Tree(String name) :: Tree(Term subterm) :: Token In :: [] ->
+     Some ( Let (isrec, name, [], subterm, Fin name) )
+
+  | Token TLet :: Tree(Bool isrec) :: Tree(Stringlist sl) :: Tree(Term subterm) :: Token In :: [] ->
+     Some ( Let (isrec, List.hd sl, List.tl sl, subterm, Fin (List.hd sl)) )
+     
+  | _ ->
+     None     
+;;
+
+let some = function
+  | Some x -> x
+  | _ -> failwith "is something"
+
+let preamble () = 
+  print_string ("
+~ 
+
 aero.ml version " ^ version ^ "
   
 gnu licence 2.0
 
 README.ml for details
 
-
+~
 
 experimental shell
 
+~
 
 
 ")
+;;
 
-  in
-
-  let help () =
-    print_string "
+let help () =
+  print_string "
 help prints out this message
 create
-"
-  in
-  
 
+"
+;;
+
+let aero () = 
   let _ = preamble () in
-  let _ = print_string ">" in
-  let _ = flush () in
+  let _ = print_string "\n> " in
+  let _ = flush stdout in
   
-  let orea cs =
+  let rec aero cs tables sources =
+    try
+      orea ( input_char stdin :: cs ) tables sources
+    with
+      _ ->
+	false
+	  
+  and orea cs tables sources =
     match shellify cs with
     | "show c" | "show w" | "aero.ml" | "aero" | "aero ()" ->
        let _ = preamble () in
-       let _ = print_string ">" in
-       cs
+       let _ = print_string "> " in
+       let _ = flush stdout in
+       aero [] tables sources
 	 
     | "help" ->
        let _ = help () in
-       let _ = flush () in
-       cs
+       let _ = print_string "> " in
+       let _ = flush stdout in
+       aero [] tables sources
 	 
     | "create" ->
-       let _ = print_string "contract creation not yet supported in repl" in
-       cs
-	   
+       let _ = print_string "contract creation not yet supported in aero\n" in
+       let _ = print_string "> " in
+       let _ = flush stdout in
+       aero [] tables sources
+
+
+    | "exit" | "quit" ->
+       true
+	 
     | x ->
-       cs
-  in
-  
-  
-  let rec aero cs =
-    try
-      let rec get_input cs =
-	try
-	  match take 2 cs with
-	  | [ '\n' ; '\n' ] ->
-	     let _ = orea cs in
-	     let _ = print_string ">" in
-	     let _ = flush () in
-	     get_input ['\222']
+       match cs with
+       | '\n' :: '\n' :: '\n' :: cs -> (
+	 let _ = print_string "ignoring...\n\n" in
+	 let _ = print_string "> " in
+	 let _ = flush stdout in
+	 aero [] tables sources
+       )
 
-	  | [ '\n' ; '\222' ] ->
-	     ()
-	       
-	  | [ '\n' ; _ ] | [ '\n' ] ->
-	     let _ = print_string ">" in
-	     let _ = flush () in
-	     get_input (List.tl cs)
-	       
-	  | _ ->
-	     get_input ( input_char stdin :: cs )
-	with
-	  _ ->
-	    let _ = orea cs in
-	    ()
-      in
-      get_input cs
-    with
-      _ -> aero []
+       | '\n' :: _ -> (
+	 try
+	   let tables, sources = (
+	     try
+	       ir x sources tables
+	     with 
+		 (* BUG --- need to remember declared rewrites *)
+	       _ -> (
+		 try_parse_singular_let x
+			|> some
+			|> (tableau sources tables)
+	       ))
+	   in
+	   let lambda = calculate tables in
+	   let _ = print_string "\n: " in
+	   let _ = print_string (lchr lambda) in
+	   let _ = print_string "\n\n> " in
+	   let _ = flush stdout in
+	   aero [] (List.tl tables) sources
+	 with
+	   _ ->
+	     aero cs tables sources
+       )
+		
+       | _ ->
+	  aero cs tables sources
   in
 
-  aero []
+
+  match aero [] [] emptymap with
+  | true ->
+     ()
+
+  | false ->
+     let _ = print_string "aborting\n" in
+     let _ = flush stdout in
+     ()
 ;;
 
 match Array.length (Sys.argv) with
 | x when x < 2 -> aero ()
 | _ ->
+   let filename = filename () in
+   let tables = ir (str_file filename) emptymap [] |> fst in
+   let prefix = prefix filename in   
    Array.iter
-     process_arg
+     (process_arg tables prefix)
      Sys.argv
 
 (* 

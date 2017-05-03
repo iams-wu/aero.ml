@@ -10,6 +10,8 @@ it under the terms
     but without any warranty; without even the implied warranty of
 	merchantability or fitness for a particular purpose.
 	    
+	    see LICENSE for more details
+	    
 	    contact @yithump
 	    
 	    copyleft -- april 2017    
@@ -72,11 +74,40 @@ aero
 
 
 
-  
   ~~~
-  example
+
+
+  
+  example --- running in bash / geth
 
   (bash)$ ocaml aero.ml example.ml
   
   (geth)$ loadScript example.js
   (geth)$ test.run.call ()
+
+
+
+
+  ~~
+  
+
+  example --- running interactively (in aero)
+
+  (aero)> let false ff tt = ff in
+
+	  : ll|~
+
+
+  (aero)> let true ff tt = tt in 
+
+	  : ll||~
+
+
+  (aero)> let and x y = x false y in
+
+	  : llaa|~ll|~||~
+
+
+  (aero)> and false true
+
+	  : aallaa|~ll|~||~ll|~ll||~

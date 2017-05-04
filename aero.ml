@@ -1314,10 +1314,10 @@ let tableau sources tables term =
   main :: tables, sources
 ;;
 
-let writeprogram translation prefix =
+let writeprogram tables sources prefix =
   let outfilename = prefix ^  ".cem" in
   let oc = open_out outfilename in
-  let s = cat "\n\n" (List.map string_of_table translation) in
+  let s = cat "\n\n" (List.map string_of_table tables) in
   let _ = output_string oc s in 
   let _ = close_out oc in 
   ()
@@ -1581,7 +1581,7 @@ let calculate tables =
   calculate (List.rev tables) emptymap
 ;;
 
-let simulate tables =
+let simulate tables sources prefix =
   let lambdatree = calculate tables in
   let fin , red = quickreduce lambdatree false lchr in
   let _ = print_string "\nnumber of beta reductions: " in
@@ -1772,7 +1772,7 @@ let bundle array n pad =
   bundle array []
 ;;
 
-let compile tables =
+let compile tables sources =
   let box i size =
     let rec box i acc =
       if i = 0 then
@@ -3784,9 +3784,8 @@ let compile tables =
     ]
 ;;
 
-let ethereum_human_readable_compile tables =
-  let program = compile tables in
-  Array.to_list program |> List.map strop |> cat"\n" |> print_string
+let ethereum_human_readable_compile tables sources prefix =
+  compile tables sources |> Array.to_list |> List.map strop |> cat "\n" |> print_string
 ;;
 
 let ehrc = ethereum_human_readable_compile ;;
@@ -3831,8 +3830,8 @@ var test = test_contract.new(
   ()
 ;;
 
-let web3g tables prefix =
-  web3_generate (compile tables) prefix
+let web3g tables sources prefix =
+  web3_generate (compile tables sources) prefix
 ;;
 
 let code = function
@@ -3914,22 +3913,23 @@ let disassemble hex =
 (* ------------------------------------------------------------------------------------------------------------------*)
 let rec args =
   ("--help", "Print out the various available options",
-   fun tables prefix -> print_help ())
+   fun tables sources prefix -> print_help ())
   ::
     ("--evm", "Write out human-readable EVM code to .evm file",
-   fun tables prefix -> ehrc tables)
+     fun tables sources prefix -> ehrc tables sources prefix)
   ::
     ("--web3", "Write out EVM contract creation to a .js file",
-     fun tables prefix -> web3g tables prefix)
+     fun tables sources prefix -> web3g tables sources prefix)
   ::
     ("--cem", "Write out the immediate representation to a .cem file",
-     fun tables prefix -> writeprogram tables prefix)
+     fun tables sources prefix -> writeprogram tables sources prefix)
   ::
     ("--calc", "Simulate the computation using lambda calculus",
-      fun tables prefix -> simulate tables)
-(*  ::
-    ("--dis", "Dissasemble EVM bytecode",
-    fun () -> disassemble hex) *)
+     fun tables sources prefix -> simulate tables sources prefix)
+  (*  ::
+      ("--dis", "Dissasemble EVM bytecode",
+      fun () -> disassemble hex) *)
+
   :: []
     
 and print_help () =
@@ -3952,10 +3952,10 @@ let parameter_map =
     args
 ;;
 
-let process_arg tables prefix arg =
+let process_arg tables sources prefix arg =
   try
     let  _, exe = IMap.find arg parameter_map in
-    exe tables prefix
+    exe tables sources prefix 
   with
     _ -> ()
 ;;
@@ -3991,6 +3991,14 @@ let ir str sources tables =
   |> prep
   |> apply_rewrites []
   |> (tableau sources tables)
+;;
+
+let scratch str =
+  ir str emptymap []  
+;;
+
+let evm str =
+  str |> scratch |> (fun (tables, sources) -> compile tables sources)
 ;;
 
 let try_parse_singular_let s =
@@ -4031,15 +4039,19 @@ experimental shell
 
 let help () =
   print_string "
-help prints out this message
+help 
 create
 
 "
 ;;
 
+let prompt () =
+  print_string "(aero)> "
+;;
+
 let aero () = 
   let _ = preamble () in
-  let _ = print_string "\n> " in
+  let _ = prompt () in
   let _ = flush stdout in
   
   let rec aero cs tables sources =
@@ -4053,19 +4065,19 @@ let aero () =
     match shellify cs with
     | "show c" | "show w" | "aero.ml" | "aero" | "aero ()" ->
        let _ = preamble () in
-       let _ = print_string "> " in
+       let _ = prompt () in
        let _ = flush stdout in
        aero [] tables sources
 	 
     | "help" ->
        let _ = help () in
-       let _ = print_string "> " in
+       let _ = prompt () in
        let _ = flush stdout in
        aero [] tables sources
 	 
     | "create" ->
        let _ = print_string "contract creation not yet supported in aero\n" in
-       let _ = print_string "> " in
+       let _ = prompt () in
        let _ = flush stdout in
        aero [] tables sources
 
@@ -4076,8 +4088,8 @@ let aero () =
     | x ->
        match cs with
        | '\n' :: '\n' :: '\n' :: cs -> (
-	 let _ = print_string "ignoring...\n\n" in
-	 let _ = print_string "> " in
+	 let _ = print_string "\n ... not heeding ... \n\n" in
+	 let _ = prompt () in
 	 let _ = flush stdout in
 	 aero [] tables sources
        )
@@ -4096,9 +4108,9 @@ let aero () =
 	       ))
 	   in
 	   let lambda = calculate tables in
-	   let _ = print_string "\n: " in
-	   let _ = print_string (lchr lambda) in
-	   let _ = print_string "\n\n> " in
+	   let _ = print_string ("\n\t: " ^ lchr lambda) in
+	   let _ = print_string "\n\n" in
+	   let _ = prompt () in
 	   let _ = flush stdout in
 	   aero [] (List.tl tables) sources
 	 with
@@ -4124,13 +4136,14 @@ let aero () =
 match Array.length (Sys.argv) with
 | x when x < 2 -> aero ()
 | _ ->
-   let filename = filename () in
-   let tables = ir (str_file filename) emptymap [] |> fst in
-   let prefix = prefix filename in   
-   Array.iter
-     (process_arg tables prefix)
-     Sys.argv
-
+   let prefix = () |> filename |> prefix in
+   begin
+     () |> filename |> str_file |> scratch |>
+	 fun (tables, sources) -> 
+	   Array.iter
+	     (fun arg -> process_arg tables sources prefix arg)
+	     Sys.argv
+   end
 (* 
 
 known bugs:  

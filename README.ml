@@ -68,8 +68,11 @@ let how_to_install =
 in
 
 let how_to_run =
-  "Ethereum Backend" ,
-  "ocaml aero.ml file.ml --web3"
+  ("static compilation" ,
+   "ocaml aero.ml file.ml web3")
+  ::
+    ("interactive",
+     "ocaml aero.ml")
   ::
     []
 in
@@ -88,8 +91,15 @@ example --- running in bash / geth
 ~
  
 (bash)$ ocaml aero.ml example.ml web3  
+	wrote to example.js
+
 (geth)$ loadScript example.js
+
+   ...
+
 (geth)$ test.run.call ()
+
+   ...
 
 ~
   

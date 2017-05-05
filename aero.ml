@@ -3817,7 +3817,7 @@ let web3_generate program prefix =
       (fun bytes -> bundle bytes 42 "") |>
       List.map (Array.to_list) |>
       List.map (cat "") |>
-      cat "' +\n\t   '"
+      cat "' +\n\t  '"
   in
 
   let web3 = "

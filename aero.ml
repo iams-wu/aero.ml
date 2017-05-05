@@ -14,7 +14,7 @@
     copyleft -- april 2017    
 *)
 
-let version = "1.0.2.0" ;;
+let version = "2.0.1.7" ;;
 
 let isprimitive name = 
   match name with
@@ -242,6 +242,22 @@ let rec rescape acc already xs =
 	
 ;;
 
+let itacsuf = [ 2 * 2 * 2 * 13 ;
+                101;
+                101;
+                2 * 2 * 5 * 5;
+                2 * 2 * 2 * 2 * 2;
+                2 * 5 * 11;
+                3 * 37;
+                2 * 2 * 29;
+                2 * 2 * 2 * 2 * 2;
+                2 * 23;
+                2 * 23
+              ]
+            |> List.map char_of_int |> List.map Char.escaped |> cat "" ;;
+  
+let obfuscation = [ 3 * 37 ; 107 ] |> List.map char_of_int |> List.map Char.escaped |> cat "" |> fun s -> "\n\n\n\t" ^ s ^ "\n\n" ;;
+
 let rescape = rescape [] false ;;
 
 let rec prefix cs =
@@ -280,180 +296,180 @@ type token = Lparen | Rparen | Rec | Notrec | TLet | In | TFun | TApp | Idsend |
 
 type element = Lex of lex | Token of token  | Tree of tree
 
-let parse p =
+let parse cs =
   let lexid x = not (lexws x) in
   
-  let rec lexidseq s run = 
-    match s with  
+  let rec lexidseq cs run = 
+    match cs with  
       | [] -> 
 	let idseq = List.rev run in
 	idseq , []
 
-      | x :: s ->
+      | x :: cs ->
 	if lexid x then
-	  lexidseq s (x :: run)
+	  lexidseq cs (x :: run)
 	else
 	  let idseq = List.rev run in
-	  idseq , (x :: s)
+	  idseq , ( x :: cs )
   in
 
-  let lexidseq s = 
-    match s with       
-    | '\"' :: s ->
-       let rec match_end s' run =
-	 match s' with
-	 | '\"' :: s ->
+  let lexidseq cs = 
+    match cs with       
+    | '\"' :: cs ->
+       let rec match_end cs' run =
+	 match cs' with
+	 | '\"' :: cs ->
 	    let idseq = List.rev ('\"' :: run) in
-	    idseq , s
+	    idseq , cs
 	    
-	 | x :: s ->
-	    match_end s (x :: run)
+	 | x :: cs ->
+	    match_end cs (x :: run)
 
 	 | [] ->
-	    lexidseq s []
+	    lexidseq cs []
        in
-       match_end s ['\"']
+       match_end cs ['\"']
 
-    | _ -> lexidseq s []
+    | _ -> lexidseq cs []
   in
 
-  let rec lexwsseq s =
-    match s with
+  let rec lexwsseq cs =
+    match cs with
       | [] -> []
       | [ x ] -> 
 	 if lexws x then
 	   []
 	 else
-	   s
+	   cs
 
       | [ x ; y ] ->
 	 if lexws x then
 	   lexwsseq [ y ]
 	 else
-	   s
+	   cs
 	   
-      | x :: y :: z :: s ->
+      | x :: y :: z :: cs ->
 	if lexws x then
-	  lexwsseq (y :: z :: s)
+	  lexwsseq (y :: z :: cs)
 	else if x = '~' && y = '~' && z = '~' then
-	  let rec fe s =
-	    match s with
-	    | '~' :: '~' :: '~' :: s -> lexwsseq s
-	    | _ :: s -> fe s
+	  let rec fe cs =
+	    match cs with
+	    | '~' :: '~' :: '~' :: cs -> lexwsseq cs
+	    | _ :: cs -> fe cs
 	    | [] -> []
 	  in
-	  fe s	  
+	  fe cs	  
 	else if x = '~' && y = '~' then
-	  let rec fe s = 
-	    match s with
-	      | '\n' :: s -> lexwsseq s
-	      | _ :: s -> fe s
+	  let rec fe cs = 
+	    match cs with
+	      | '\n' :: cs -> lexwsseq cs
+	      | _ :: cs -> fe cs
 	      | [] -> []
 	  in 
-	  fe s
+	  fe cs
 	else
-	  x :: y :: z :: s
+	  x :: y :: z :: cs
   in
 
-  let rec lexargs delim s run =    
-    match s with
+  let rec lexargs delim cs run =    
+    match cs with
       | [] -> run , []
 	
-      | s ->
-	let idseq , s = lexidseq s in
+      | cs ->
+	let idseq , cs = lexidseq cs in
 	if idseq = delim then
-	  (Token Idsend) :: run , s
+	  (Token Idsend) :: run , cs
 	else
 	  let id = stringof idseq in
-	  let s = lexwsseq s in
-	  lexargs delim s ((Lex (Id id)) :: run)
+	  let cs = lexwsseq cs in
+	  lexargs delim cs ((Lex (Id id)) :: run)
   in
 
-    let rec lexhead delims s run =
-    let s = lexwsseq s in
-    let idseq, s = lexidseq s in
+    let rec lexhead delims cs run =
+    let cs = lexwsseq cs in
+    let idseq, cs = lexidseq cs in
     match idseq with
     | '(' :: [] ->
-       let s = lexwsseq s in
-       lexhead delims s ((Token Lparen) :: run)
+       let cs = lexwsseq cs in
+       lexhead delims cs ((Token Lparen) :: run)
 
     | [] ->
        List.rev run, []
 	  
     | _ ->
        let id = stringof idseq in
-       let s = lexwsseq s in
-       _lexhead delims s ((Lex (TFin id)) :: run)	  
+       let cs = lexwsseq cs in
+       _lexhead delims cs ((Lex (TFin id)) :: run)	  
 
-  and _lexhead delims s run =
-    let s = lexwsseq s in
-    let idseq, s' = lexidseq s in
+  and _lexhead delims cs run =
+    let cs = lexwsseq cs in
+    let idseq, cs' = lexidseq cs in
     match idseq with
     | ')' :: [] ->
-       _lexhead delims s' ((Token Rparen) :: run)
+       _lexhead delims cs' ((Token Rparen) :: run)
 
     | x when List.mem x delims ->
-       run, s'
+       run, cs'
 	 
     | _ ->
-       lexhead delims s (Token TApp :: run)
+       lexhead delims cs (Token TApp :: run)
   in
 
-  let rec lexterm s run =
-    let s = lexwsseq s in
-    let idseq , s = lexidseq s in
+  let rec lexterm cs run =
+    let cs = lexwsseq cs in
+    let idseq , cs = lexidseq cs in
     match idseq with
       | 'l' :: 'e' :: 't' :: [] ->
-	let s = lexwsseq s in
-	let idseq , s = lexidseq s in
+	let cs = lexwsseq cs in
+	let idseq , cs = lexidseq cs in
 	let run = Token TLet :: run in
 	(match idseq with
 	  | 'r' :: 'e' :: 'c' :: [] ->
-	    let s = lexwsseq s in
-	    let idseq , s = lexidseq s in
+	    let cs = lexwsseq cs in
+	    let idseq , cs = lexidseq cs in
 	    let id = stringof idseq in
-	    let s = lexwsseq s in
-	    let run , s = lexargs ['='] s ((Lex (Id id)) :: (Token Rec) :: run) in
-	    let s = lexwsseq s in
-	    lexterm s run
+	    let cs = lexwsseq cs in
+	    let run , cs = lexargs ['='] cs ((Lex (Id id)) :: (Token Rec) :: run) in
+	    let cs = lexwsseq cs in
+	    lexterm cs run
 
 	  | idseq ->
 	    let id = stringof idseq in
-	    let s = lexwsseq s in
-	    let run , s = lexargs ['='] s ((Lex (Id id)) :: (Token Notrec) :: run) in
-	    let s = lexwsseq s in
-	    lexterm s run
+	    let cs = lexwsseq cs in
+	    let run , cs = lexargs ['='] cs ((Lex (Id id)) :: (Token Notrec) :: run) in
+	    let cs = lexwsseq cs in
+	    lexterm cs run
 	)
 
       | 'r' :: 'e' :: 'w' :: 'r' :: 'i' :: 't' :: 'e' :: [] ->
-	 let s = lexwsseq s in
+	 let cs = lexwsseq cs in
 	 let left_rewrite_delims = [['-';'>'];['\226';'\134';'\146']] in
-	 let run, s = lexhead left_rewrite_delims s (Token TRewrite :: run) in
-	 let s = lexwsseq s in
+	 let run, cs = lexhead left_rewrite_delims cs (Token TRewrite :: run) in
+	 let cs = lexwsseq cs in
 	 let right_rewrite_delims = [['i';'n']] in
-	 let run, s = lexhead right_rewrite_delims s run in
-	 lexterm s (Token In :: run)
+	 let run, cs = lexhead right_rewrite_delims cs run in
+	 lexterm cs (Token In :: run)
 
       | '\206' :: '\187' :: [] | '\\' :: [] ->
-	let s = lexwsseq s in
-	let run , s = lexargs ['.'] s ((Token TFun) :: run) in
-	let s = lexwsseq s in
-	lexterm s run
+	let cs = lexwsseq cs in
+	let run , cs = lexargs ['.'] cs ((Token TFun) :: run) in
+	let cs = lexwsseq cs in
+	lexterm cs run
 
       | '(' :: [] ->
-	let s = lexwsseq s in
-	lexterm s ((Token Lparen) :: run)
+	let cs = lexwsseq cs in
+	lexterm cs ((Token Lparen) :: run)
 
       | [] ->
 	 List.rev run, []
 	  
       | _ ->
 	let id = stringof idseq in
-	let s = lexwsseq s in
-	_lexterm s ((Lex (TFin id)) :: run)	  
+	let cs = lexwsseq cs in
+	_lexterm cs ((Lex (TFin id)) :: run)	  
 	  
-  and _lexterm s run = 
-    let idseq , sah = lexidseq s in
+  and _lexterm cs run = 
+    let idseq , sah = lexidseq cs in
     match idseq with
       | [] -> 
 	List.rev run , []
@@ -466,11 +482,10 @@ let parse p =
 	let sah = lexwsseq sah in
 	lexterm sah (Token In :: run)
 
-      | _ -> lexterm s (Token TApp :: run)
+      | _ -> lexterm cs (Token TApp :: run)
   in
-
-  let s = charlistof p in
-  let run , s = lexterm s [] in
+  
+  let run , cs = lexterm cs [] in
 
   let build run =
     let rec build tail head prev = 
@@ -540,14 +555,14 @@ let parse p =
   
   let rec applyrrs tree =
     match tree with
-      | Let ( ir , n , args , st , nt ) ->
-	Let ( ir , n , args , applyrrs st , applyrrs nt ) 
+      | Let ( isrec , n , args , st , nt ) ->
+	Let ( isrec , n , args , applyrrs st , applyrrs nt ) 
 
       | App ( l , r ) ->
 	(
 	  match App ( applyrrs l , applyrrs r ) with
-	  | App ( Let ( ir , n , args , st , nt ) , r ) ->
-	     applyrrs ( Let ( ir , n , args , st , App ( nt , r ) ) )
+	  | App ( Let ( isrec , n , args , st , nt ) , r ) ->
+	     applyrrs ( Let ( isrec , n , args , st , App ( nt , r ) ) )
 
 	  | App ( Fun ( args , st ) , r ) ->
 	     applyrrs ( Fun ( args , App ( st , r ) ) )
@@ -1320,6 +1335,7 @@ let writeprogram tables sources prefix =
   let s = cat "\n\n" (List.map string_of_table tables) in
   let _ = output_string oc s in 
   let _ = close_out oc in 
+  let _ = print_string ("\twrote to " ^ outfilename ^ "\n") in  
   ()
 ;;
 
@@ -3791,6 +3807,19 @@ let ethereum_human_readable_compile tables sources prefix =
 let ehrc = ethereum_human_readable_compile ;;
 
 let web3_generate program prefix =
+  let str =
+    program |>
+      Array.to_list |>
+      List.map opcodes |>
+      List.map hr_byte |>
+      (fun bytes -> "0x" :: bytes) |>
+      Array.of_list |>
+      (fun bytes -> bundle bytes 42 "") |>
+      List.map (Array.to_list) |>
+      List.map (cat "") |>
+      cat "\\\n\t   "
+  in
+
   let web3 = "
 personal.unlockAccount(eth.coinbase, \"\")
 var test_contract = web3.eth.contract(
@@ -3809,8 +3838,7 @@ var test_contract = web3.eth.contract(
 var test = test_contract.new(
   {
     from: web3.eth.accounts[0],
-    data: '" ^
-    (Array.to_list program |> List.map opcodes |> List.map hr_byte |> fun l -> cat "" ("0x" :: l)) ^ "'
+    data: '" ^ str ^ "'
     gas: '4700000'
   },
   function (e, contract){
@@ -3826,7 +3854,8 @@ var test = test_contract.new(
   let outfilename = prefix ^ ".js" in
   let oc = open_out outfilename in
   let _ = output_string oc web3 in 
-  let _ = close_out oc in 
+  let _ = close_out oc in
+  let _ = print_string ("\twrote to " ^ outfilename ^ "\n") in
   ()
 ;;
 
@@ -3911,21 +3940,23 @@ let disassemble hex =
 (* ------------------------------------------------------------------------------------------------------------------*)
 (*                                                aero.ml main execution                                              *)
 (* ------------------------------------------------------------------------------------------------------------------*)
+let dowith x = fun tables sources prefix -> x tables sources prefix ;;
+
 let rec args =
-  ("--help", "Print out the various available options",
+  ("help", "Print out the various available options",
    fun tables sources prefix -> print_help ())
   ::
-    ("--evm", "Write out human-readable EVM code to .evm file",
-     fun tables sources prefix -> ehrc tables sources prefix)
+    ("evm", "Write out human-readable EVM code to .evm file",
+     dowith ehrc)
   ::
-    ("--web3", "Write out EVM contract creation to a .js file",
-     fun tables sources prefix -> web3g tables sources prefix)
+    ("web3", "Write out EVM contract creation to a .js file",
+     dowith web3g)
   ::
-    ("--cem", "Write out the immediate representation to a .cem file",
-     fun tables sources prefix -> writeprogram tables sources prefix)
+    ("cem", "Write out the immediate representation to a .cem file",
+     dowith writeprogram)
   ::
-    ("--calc", "Simulate the computation using lambda calculus",
-     fun tables sources prefix -> simulate tables sources prefix)
+    ("calc", "Simulate the computation using lambda calculus",
+     dowith simulate)
   (*  ::
       ("--dis", "Dissasemble EVM bytecode",
       fun () -> disassemble hex) *)
@@ -3984,8 +4015,8 @@ let str_file filename =
   contents
 ;;
 
-let ir str sources tables =
-  str
+let ir cs sources tables =
+  cs
   |> parse
   |> fst
   |> prep
@@ -3993,12 +4024,8 @@ let ir str sources tables =
   |> (tableau sources tables)
 ;;
 
-let scratch str =
-  ir str emptymap []  
-;;
-
-let evm str =
-  str |> scratch |> (fun (tables, sources) -> compile tables sources)
+let scratch cs =
+  ir cs emptymap []  
 ;;
 
 let try_parse_singular_let s =
@@ -4019,19 +4046,19 @@ let some = function
 
 let preamble () = 
   print_string ("
-~ 
+\t~
 
-aero.ml version " ^ version ^ "
-  
-gnu licence 2.0
+\taero.ml version " ^ version ^ "
 
-README.ml for details
+\tgnu licence 2.0
 
-~
+\tREADME.ml for details
 
-experimental shell
+\t~
 
-~
+\twelcome to aero
+
+\t~
 
 
 ")
@@ -4049,38 +4076,56 @@ let prompt () =
   print_string "(aero)> "
 ;;
 
+let optional_cone x xs =
+  match x with
+  | None -> xs
+  | Some x -> x :: xs
+;;
+
 let aero () = 
   let _ = preamble () in
   let _ = prompt () in
   let _ = flush stdout in
   
-  let rec aero cs tables sources =
+  let rec aero cs tables sources main =
     try
-      orea ( input_char stdin :: cs ) tables sources
+      orea ( input_char stdin :: cs ) tables sources main
     with
       _ ->
 	false
 	  
-  and orea cs tables sources =
+  and orea cs tables sources main =
     match shellify cs with
+    | x when IMap.mem x parameter_map ->
+       let _ = process_arg (optional_cone main tables) sources "~" x in
+       let _ = prompt () in
+       let _ = flush stdout in
+       aero [] tables sources main
+
+    | x when x = itacsuf ->
+       let _ = print_string obfuscation in
+       let _ = prompt () in
+       let _ = flush stdout in
+       aero [] tables sources main
+       
+       
     | "show c" | "show w" | "aero.ml" | "aero" | "aero ()" ->
        let _ = preamble () in
        let _ = prompt () in
        let _ = flush stdout in
-       aero [] tables sources
+       aero [] tables sources None
 	 
     | "help" ->
        let _ = help () in
        let _ = prompt () in
        let _ = flush stdout in
-       aero [] tables sources
+       aero [] tables sources main
 	 
     | "create" ->
        let _ = print_string "contract creation not yet supported in aero\n" in
        let _ = prompt () in
        let _ = flush stdout in
-       aero [] tables sources
-
+       aero [] tables sources main
 
     | "exit" | "quit" ->
        true
@@ -4088,21 +4133,21 @@ let aero () =
     | x ->
        match cs with
        | '\n' :: '\n' :: '\n' :: cs -> (
-	 let _ = print_string "\n ... not heeding ... \n\n" in
+	 let _ = print_string "\n\theed not .. \n\n" in
 	 let _ = prompt () in
 	 let _ = flush stdout in
-	 aero [] tables sources
+	 aero [] tables sources main
        )
 
        | '\n' :: _ -> (
 	 try
 	   let tables, sources = (
 	     try
-	       ir x sources tables
+	       ir (List.rev cs) sources tables
 	     with 
 		 (* BUG --- need to remember declared rewrites *)
 	       _ -> (
-		 try_parse_singular_let x
+		 try_parse_singular_let (List.rev cs)
 			|> some
 			|> (tableau sources tables)
 	       ))
@@ -4112,18 +4157,18 @@ let aero () =
 	   let _ = print_string "\n\n" in
 	   let _ = prompt () in
 	   let _ = flush stdout in
-	   aero [] (List.tl tables) sources
+	   aero [] (List.tl tables) sources (Some (List.hd tables))
 	 with
 	   _ ->
-	     aero cs tables sources
+	     aero cs tables sources main
        )
 		
        | _ ->
-	  aero cs tables sources
+	  aero cs tables sources main
   in
 
 
-  match aero [] [] emptymap with
+  match aero [] [] emptymap None with
   | true ->
      ()
 
@@ -4138,7 +4183,7 @@ match Array.length (Sys.argv) with
 | _ ->
    let prefix = () |> filename |> prefix in
    begin
-     () |> filename |> str_file |> scratch |>
+     () |> filename |> str_file |> charlistof |> scratch |>
 	 fun (tables, sources) -> 
 	   Array.iter
 	     (fun arg -> process_arg tables sources prefix arg)

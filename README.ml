@@ -1,21 +1,25 @@
 ~~~
-  aero.ml
-
-    This program, hereby known as "The Program" is free software; you can redistribute it and/or modify
-it under the terms
-    of the GNU General Public License Version 2 published
-  in year June 1991
+(*
   
-  This program is distributed in the hope that it will be useful,
-    but without any warranty; without even the implied warranty of
-	merchantability or fitness for a particular purpose.
+aero.ml
+
+This program, hereby known as "The Program" is free software; 
+you can redistribute it and/or modify it under the terms of the 
+GNU General Public License Version 2 published in year June 1991
+  
+This program is distributed in the hope that it will be useful, 
+but without any warranty; without even the implied warranty of 
+merchantability or fitness for a particular purpose.
 	    
-	    see LICENSE for more details
+see LICENSE for more details
 	    
-	    contact @yithump
+contact @yithump
 	    
-	    copyleft -- april 2017    
-	    ~~~
+copyleft -- april 2017    
+ 
+*)
+
+  ~~~
     
 let [] [] ~::~ = [] in
 
@@ -75,39 +79,45 @@ aero
 
 
   ~~~
+(*
 
+~
 
+example --- running in bash / geth
+
+~
+ 
+(bash)$ ocaml aero.ml example.ml web3  
+(geth)$ loadScript example.js
+(geth)$ test.run.call ()
+
+~
   
-  example --- running in bash / geth
+example --- running interactively 
 
-  (bash)$ ocaml aero.ml example.ml
-  
-  (geth)$ loadScript example.js
-  (geth)$ test.run.call ()
+~
 
+(aero)> let false ff tt = ff in
 
-
-
-  ~~
-  
-
-  example --- running interactively (in aero)
-
-  (aero)> let false ff tt = ff in
-
-	  : ll|~
+        : ll|~
 
 
-  (aero)> let true ff tt = tt in 
+(aero)> let true ff tt = tt in 
 
-	  : ll||~
-
-
-  (aero)> let and x y = x false y in
-
-	  : llaa|~ll|~||~
+	: ll||~
 
 
-  (aero)> and false true
+(aero)> let and x y = x false y in
 
-	  : aallaa|~ll|~||~ll|~ll||~
+	: llaa|~ll|~||~
+
+
+(aero)> and false true
+
+	: aallaa|~ll|~||~ll|~ll||~
+
+
+(aero)> web3
+        wrote to ~.js                       
+
+*)

@@ -3,7 +3,7 @@
   
 aero.ml
 
-This program, hereby known as "The Program" is free software; 
+This program, hereby known as "the Program" is free software; 
 you can redistribute it and/or modify it under the terms of the 
 GNU General Public License Version 2 published in year June 1991
   
@@ -68,11 +68,11 @@ let how_to_install =
 in
 
 let how_to_run =
-  ("static compilation" ,
-   "ocaml aero.ml file.ml web3")
+  "static compilation" ,
+   "ocaml aero.ml file.ml web3"
   ::
-    ("interactive",
-     "ocaml aero.ml")
+    "interactive",
+     "ocaml aero.ml"
   ::
     []
 in

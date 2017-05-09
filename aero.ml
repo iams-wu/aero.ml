@@ -108,6 +108,77 @@ let isdecimal n =
   isdecimal ( charlistof n )
 ;;
 
+let is_digit (* TODO: base argument *) c =
+  match c with
+  | '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' -> true
+  | _ -> false
+;;
+
+let rec take acc n list =
+  match list with
+  | _ when n <= 0 ->
+      List.rev acc , list
+
+  | [] ->
+     List.rev acc , list
+       
+  | x :: xs ->
+      take ( x :: acc ) ( n - 1 ) xs
+;;
+
+let take = take [] ;;
+
+let is_sup_digit cs =
+  match cs with
+  | '\194' :: '\185' :: _ | '\194' :: '\178' :: _ | '\194' :: '\179' :: _ ->
+     Some ( cs |> take 2 )
+     
+  |'\226' :: '\129' :: '\176' :: _ | '\226' :: '\129' :: '\180' :: _ | '\226' :: '\129' :: '\181' :: _ | '\226' :: '\129' :: '\182' :: _
+   | '\226' :: '\129' :: '\183' :: _ | '\226' :: '\129' :: '\184' :: _ | '\226' :: '\129' :: '\185' :: _ ->
+    Some ( cs |> take 3 )
+
+  | _ -> None
+;;
+
+let rec take_until acc predicate list =
+  match list with
+  | x :: xs when predicate x -> take_until (x :: acc) predicate xs
+  | _ -> List.rev acc, list
+;;
+
+let take_until = take_until [] ;;
+
+let rec take_until_dynamic acc predicate list =
+  match predicate list with
+  | Some ( _match, list ) -> take_until_dynamic (_match ::  acc) predicate list
+  | None -> List.rev acc, list
+;;
+
+let take_until_dynamic = take_until_dynamic [] ;;
+
+let normal_of_superscript cs =
+  match cs with
+  | '\226' :: '\129' :: '\176' :: [] -> '0'
+  | '\194' :: '\185' :: [] -> '1'
+  | '\194' :: '\178' :: [] -> '2'
+  | '\194' :: '\179' :: [] -> '3'
+  | '\226' :: '\129' :: '\180' :: [] -> '4'
+  | '\226' :: '\129' :: '\181' :: [] -> '5'
+  | '\226' :: '\129' :: '\182' :: [] -> '6'
+  | '\226' :: '\129' :: '\183' :: [] -> '7'
+  | '\226' :: '\129' :: '\184' :: [] -> '8'
+  | '\226' :: '\129' :: '\185' :: [] -> '9'
+  | _ -> failwith ((stringof cs) ^ " is not a superscript digit")
+;;
+  
+let lex_exponential cs =
+  let base, cs = take_until is_digit cs in
+  let exp, cs = take_until_dynamic is_sup_digit cs in
+  match cs with
+  | [] -> Some ( stringof base, List.map normal_of_superscript exp |> stringof )
+  | _ -> None 
+;;  
+
 let isstring string =
   String.length string > 1 &&
     String.get string 0 = '\"' &&
@@ -183,20 +254,6 @@ let rec repeat x n =
   else
     x :: repeat x (n-1)
 ;;
-
-let rec take acc n list =
-  match list with
-  | _ when n <= 0 ->
-      List.rev acc
-
-  | [] ->
-     List.rev acc
-       
-  | x :: xs ->
-      take ( x :: acc ) ( n - 1 ) xs
-;;
-
-let take = take [] ;;
 
 let lines c =
   match c with
@@ -290,7 +347,7 @@ type term =
       
 type tree = Term of term | Stringlist of string list | String of string | Bool of bool
 
-type lex = Id of string | TFin of string
+type lex = Id of string | TFin of char list
 
 type token = Lparen | Rparen | Rec | Notrec | TLet | In | TFun | TApp | Idsend | TRewrite
 
@@ -397,9 +454,8 @@ let parse cs =
        List.rev run, []
 	  
     | _ ->
-       let id = stringof idseq in
        let cs = lexwsseq cs in
-       _lexhead delims cs ((Lex (TFin id)) :: run)	  
+       _lexhead delims cs ((Lex (TFin idseq)) :: run)	  
 
   and _lexhead delims cs run =
     let cs = lexwsseq cs in
@@ -464,9 +520,8 @@ let parse cs =
 	 List.rev run, []
 	  
       | _ ->
-	let id = stringof idseq in
 	let cs = lexwsseq cs in
-	_lexterm cs ((Lex (TFin id)) :: run)	  
+	_lexterm cs ((Lex (TFin idseq)) :: run)	  
 	  
   and _lexterm cs run = 
     let idseq , sah = lexidseq cs in
@@ -536,11 +591,20 @@ let parse cs =
 	  let tail = Tree(String id) :: tail in
 	  build tail head prev 
 
-	| Lex (TFin id) :: head ->
-	  let tail = Tree(Term(Fin id)) :: tail in
-	  build tail head prev 
+	| Lex (TFin idseq) :: head ->
+           (match lex_exponential idseq with
+           | None ->
+              let id = stringof idseq in
+	      let tail = Tree(Term(Fin id)) :: tail in
+	      build tail head prev
 
-	| x :: head ->
+           | Some(base, sup) ->
+              let term = App(App(Fin "~**~", Fin base), Fin sup) in
+              let tail = Tree(Term term) :: tail in
+              build tail head prev
+           )
+
+        | x :: head ->
 	  build (x :: tail) head prev 
 
 	| [] -> 
@@ -732,8 +796,8 @@ let prep term =
        if isrecursive name recmap then
 	 App ( Fin name , Fin name )
        else
-	 Fin (name)
-
+         Fin name
+              
     | Paren (term) ->
        prep term recmap bound
 
@@ -4028,6 +4092,10 @@ let scratch cs =
   ir cs emptymap []  
 ;;
 
+let scratch_file filename = 
+  str_file filename |> charlistof |> scratch
+;;
+  
 let try_parse_singular_let s =
   match parse s |> snd with
   | Token TLet :: Tree(Bool isrec) :: Tree(String name) :: Tree(Term subterm) :: Token In :: [] ->
@@ -4201,10 +4269,6 @@ if program size exceeds size addressable by 32 bit unsigned it, load_call needs 
 
 
 todo:
-
-expaned primitive support
-
-unicode exponentiation
 
 pattern matching
 

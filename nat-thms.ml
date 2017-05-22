@@ -28,7 +28,7 @@ in
 
 let add-inj ( x : ℕ ) ( y : ℕ ) ( z : ℕ ) ( hyp : add x y ≡ add x z ) : y ≡ z =
   match x with
-  | Z → ρ ( add-ident 0 y ) − ρ ( add-ident-0 z ) − pf
+  | Z → ρ ( add-ident 0 y ) − ρ ( add-ident-0 z ) − hyp
   | S x cx →
       let hyp' : add ( S x ) z ≡ suc ( add x z ) = add-S-comm 0 x z in
       let hyp'' : add ( S x ) y ≡ suc ( add x y ) = add-S-comm 0 x y in

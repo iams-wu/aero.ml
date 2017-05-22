@@ -5,7 +5,7 @@ aero.ml
 
 This program, hereby known as "the Program" is free software; 
 you can redistribute it and/or modify it under the terms of the 
-GNU General Public License Version 2 published in year June 1991
+GNU General Public License Version 2 published in June 1991
   
 This program is distributed in the hope that it will be useful, 
 but without any warranty; without even the implied warranty of 

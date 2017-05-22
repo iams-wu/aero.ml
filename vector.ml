@@ -22,7 +22,7 @@ type Vector (A : ⋆) : (n : ℕ) of
   ( P n self )
 in
 
-let vector_map (f : A → B) ( vec n : Vector A ) : Vector B n =
+let vector_map ( f : A → B ) ( vec n : Vector A ) : Vector B n =
   match vec with
   | [] -> []
   | h :: t -> λ r . ( f a ) :: r                     

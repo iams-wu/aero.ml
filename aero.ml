@@ -1,9 +1,9 @@
 (* 
     aero.ml
 
-    This program, hereby known as "The Program" is free software; you can redistribute it and/or modify
+    This program, hereby known as "the Program" is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License Version 2 published
-    in year June 1991
+    in June 1991
 
     This program is distributed in the hope that it will be useful,
     but without any warranty; without even the implied warranty of
@@ -14,9 +14,9 @@
     copyleft -- april 2017    
 *)
 
-let version = "2.0.1.7" ;;
+let version = "2.0.1.7.0.5" ;;
 
-let isprimitive name = 
+let isnative name = 
   match name with
   | "~+~" -> true
   | "~=~" -> true
@@ -46,6 +46,9 @@ let isprimitive name =
   | "gas" -> true
   | _ -> false
 ;;
+
+let isinput name = false ;;
+let isoutput name = false;;
 
 let primarity name =
   match name with
@@ -331,28 +334,56 @@ let rec prefix cs =
 
 let prefix infilename = infilename |> charlistof |> List.rev |> prefix ;;
 
+let some = function
+  | Some x -> x
+  | _ -> failwith "is something"
+;;
+
+let someor option default =
+  match option with
+  | Some x -> x
+  | None -> default
+;;
+
+let identity x = x ;;
+  
+let str_file filename = 
+  let ic = open_in filename in
+  let iclen = in_channel_length ic in
+  let contents = Bytes.create iclen in
+  let _ = really_input ic contents 0 iclen in
+  let _ = close_in ic in
+  contents
+;;
+
 (* ------------------------------------------------------------------------------------------ *)
 (*                                     aero.ml syntax                                          *)
 (* ------------------------------------------------------------------------------------------ *)
 
 type term = 
-  | Let of bool * string * string list * term * term 
-  | App of term * term
-  | Fun of string list * term
-  | Fin of string
-  | Paren of term
-  | Rewrite of term * term * term
-  | Match of term * ( ( term * term ) list )
-
+  | QLet of bool * string * string list * term * term 
+  | Qpp of term * term
+  | QFun of string list * term
+  | QFin of string
+  | QParen of term
+  | QRewrite of term * term * term
+  | QMatch of term * ( ( term * term ) list )
+;;
       
-type tree = Term of term | Stringlist of string list | String of string | Bool of bool
+type tree = Term of term | Stringlist of string list | String of string | Bool of bool | Matchlist of ( term * term ) list ;;
 
-type lex = Id of string | TFin of char list
+type lexon = Id of string | TFin of char list ;;
 
-type token = Lparen | Rparen | Rec | Notrec | TLet | In | TFun | TApp | Idsend | TRewrite
+type token = Lparen | Rparen | Rex | TLet | In | TFun | Tpp | Delim | TRewrite | TMatch | TBar ;;
 
-type element = Lex of lex | Token of token  | Tree of tree
+type runelement = Lexon of lexon | Token of token  | Tree of tree ;;
 
+type aero =
+  | Let of bool * string * string list * aero * aero
+  | Pp of aero * aero
+  | Fin of string
+;;
+                   
 let parse cs =
   let lexid x = not (lexws x) in
   
@@ -428,21 +459,50 @@ let parse cs =
 	  x :: y :: z :: cs
   in
 
-  let rec lexargs delim cs run =    
+  let rec lextype cs run =
     match cs with
-      | [] -> run , []
-	
-      | cs ->
-	let idseq , cs = lexidseq cs in
-	if idseq = delim then
-	  (Token Idsend) :: run , cs
-	else
-	  let id = stringof idseq in
-	  let cs = lexwsseq cs in
-	  lexargs delim cs ((Lex (Id id)) :: run)
+    (* pi *)
+    | '\206' :: '\160' :: cs -> run , cs
+
+    (* forall *)
+    | '\226' :: '\136' :: '\128' :: cs -> run , cs
+
+    (* iota *)
+    | '\206' :: '\185' :: cs -> run , cs
+
+    (* lambda *)
+    | '\206' :: '\187' :: cs -> run , cs
+
+    (* equiv *)
+    | '\226' :: '\137' :: '\161' :: cs -> run, cs
+
+    (* star *)
+    | '\226' :: '\139' :: '\134' :: cs -> run, cs
+
+    | _ -> run , cs
+       
+  in
+  
+
+  let rec lexargs delim cs run =    
+    let idseq, cs = lexidseq cs in
+    match idseq with
+    | [] -> run , cs
+    | ':' :: ':' :: [] ->
+       let cs = lexwsseq cs in
+       let run, cs = lextype cs run in
+       run , cs
+       
+    | _ when idseq = delim ->
+       (Token Delim) :: run , cs       
+
+    | _ ->
+       let id = stringof idseq in
+       let cs = lexwsseq cs in
+       lexargs delim cs ((Lexon (Id id)) :: run)
   in
 
-    let rec lexhead delims cs run =
+  let rec lexhead delims cs run =
     let cs = lexwsseq cs in
     let idseq, cs = lexidseq cs in
     match idseq with
@@ -455,7 +515,7 @@ let parse cs =
 	  
     | _ ->
        let cs = lexwsseq cs in
-       _lexhead delims cs ((Lex (TFin idseq)) :: run)	  
+       _lexhead delims cs ((Lexon (TFin idseq)) :: run)	  
 
   and _lexhead delims cs run =
     let cs = lexwsseq cs in
@@ -468,84 +528,108 @@ let parse cs =
        run, cs'
 	 
     | _ ->
-       lexhead delims cs (Token TApp :: run)
+       lexhead delims cs (Token Tpp :: run)
   in
 
   let rec lexterm cs run =
     let cs = lexwsseq cs in
     let idseq , cs = lexidseq cs in
     match idseq with
-      | 'l' :: 'e' :: 't' :: [] ->
-	let cs = lexwsseq cs in
-	let idseq , cs = lexidseq cs in
-	let run = Token TLet :: run in
-	(match idseq with
-	  | 'r' :: 'e' :: 'c' :: [] ->
-	    let cs = lexwsseq cs in
-	    let idseq , cs = lexidseq cs in
-	    let id = stringof idseq in
-	    let cs = lexwsseq cs in
-	    let run , cs = lexargs ['='] cs ((Lex (Id id)) :: (Token Rec) :: run) in
-	    let cs = lexwsseq cs in
-	    lexterm cs run
+    | 'l' :: 'e' :: 't' :: [] ->
+       let cs = lexwsseq cs in
+       let idseq , cs = lexidseq cs in
+       let run = Token TLet :: run in
+       (match idseq with
+	| 'r' :: 'e' :: 'c' :: [] ->
+	   let cs = lexwsseq cs in
+	   let idseq , cs = lexidseq cs in
+	   let id = stringof idseq in
+	   let cs = lexwsseq cs in
+	   let run , cs = lexargs ['='] cs ((Lexon (Id id)) :: (Token Rex) :: run) in
+	   let cs = lexwsseq cs in
+	   lexterm cs run
+                   
+	| idseq ->
+	   let id = stringof idseq in
+	   let cs = lexwsseq cs in
+	   let run , cs = lexargs ['='] cs ((Lexon (Id id)) :: run) in
+	   let cs = lexwsseq cs in
+	   lexterm cs run
+       )
 
-	  | idseq ->
-	    let id = stringof idseq in
-	    let cs = lexwsseq cs in
-	    let run , cs = lexargs ['='] cs ((Lex (Id id)) :: (Token Notrec) :: run) in
-	    let cs = lexwsseq cs in
-	    lexterm cs run
-	)
+    | 'm' :: 'a' :: 't' :: 'c' :: 'h' :: [] ->
+       let cs = lexwsseq cs in
+       let run, cs = lexhead [['w'; 'i'; 't'; 'h']] cs (Token TMatch :: run) in
+       let cs = lexwsseq cs in
+       let idseq, cs = lexidseq cs in
+       let cs =
+         match idseq with
+         | '|' :: [] -> cs
+         | _ -> idseq @ cs
+       in
+       let rec parse_matches cs run =
+         let cs = lexwsseq cs in
+         let delims = [['-'; '>']; ['\226'; '\134'; '\146']] in
+         let run, cs = lexhead delims cs (Token TBar :: run) in
+         let cs = lexwsseq cs in
+         let run, cs = lexterm cs run in
+         let idseq, cs = lexidseq cs in
+         match idseq with
+         | '|' :: [] -> parse_matches cs run            
+         | _ -> run, cs
+       in
+       parse_matches cs run
+         
+    | 'r' :: 'e' :: 'w' :: 'r' :: 'i' :: 't' :: 'e' :: [] ->
+       let cs = lexwsseq cs in
+       let left_rewrite_delims = [['-';'>'];['\226';'\134';'\146']] in
+       let run, cs = lexhead left_rewrite_delims cs (Token TRewrite :: run) in
+       let cs = lexwsseq cs in
+       let right_rewrite_delims = [['i';'n']] in
+       let run, cs = lexhead right_rewrite_delims cs run in
+       lexterm cs (Token In :: run)
+               
 
-      | 'r' :: 'e' :: 'w' :: 'r' :: 'i' :: 't' :: 'e' :: [] ->
-	 let cs = lexwsseq cs in
-	 let left_rewrite_delims = [['-';'>'];['\226';'\134';'\146']] in
-	 let run, cs = lexhead left_rewrite_delims cs (Token TRewrite :: run) in
-	 let cs = lexwsseq cs in
-	 let right_rewrite_delims = [['i';'n']] in
-	 let run, cs = lexhead right_rewrite_delims cs run in
-	 lexterm cs (Token In :: run)
+    | '\206' :: '\187' :: [] | '\\' :: [] ->
+       let cs = lexwsseq cs in
+       let run , cs = lexargs ['.'] cs ((Token TFun) :: run) in
+       let cs = lexwsseq cs in
+       lexterm cs run
 
-      | '\206' :: '\187' :: [] | '\\' :: [] ->
-	let cs = lexwsseq cs in
-	let run , cs = lexargs ['.'] cs ((Token TFun) :: run) in
-	let cs = lexwsseq cs in
-	lexterm cs run
+    | '(' :: [] ->
+       let cs = lexwsseq cs in
+       lexterm cs ((Token Lparen) :: run)
 
-      | '(' :: [] ->
-	let cs = lexwsseq cs in
-	lexterm cs ((Token Lparen) :: run)
-
-      | [] ->
-	 List.rev run, []
-	  
-      | _ ->
-	let cs = lexwsseq cs in
-	_lexterm cs ((Lex (TFin idseq)) :: run)	  
-	  
+    | [] ->
+       List.rev run, []
+	                 
+    | _ ->
+       let cs = lexwsseq cs in
+       _lexterm cs ((Lexon (TFin idseq)) :: run)	  
+	        
   and _lexterm cs run = 
     let idseq , sah = lexidseq cs in
     match idseq with
-      | [] -> 
-	List.rev run , []
-	  
-      | ')' :: [] ->
-	let sah = lexwsseq sah in
-	_lexterm sah ((Token Rparen) :: run)
+    | [] -> 
+       List.rev run , []
+	                
+    | ')' :: [] ->
+       let sah = lexwsseq sah in
+       _lexterm sah ((Token Rparen) :: run)
+                
+    | 'i' :: 'n' :: [] ->
+       let sah = lexwsseq sah in
+       lexterm sah (Token In :: run)
 
-      | 'i' :: 'n' :: [] ->
-	let sah = lexwsseq sah in
-	lexterm sah (Token In :: run)
-
-      | _ -> lexterm cs (Token TApp :: run)
+    | '|' :: [] -> run, cs
+               
+    | _ -> lexterm cs (Token Tpp :: run)
   in
   
-  let run , cs = lexterm cs [] in
-
   let build run =
     let rec build tail head prev = 
       match head with
-	| Token Idsend :: head ->
+	| Token Delim :: head ->
 	  let sl = Stringlist [] in
 	  let tail = Tree(sl) :: tail in
 	  build tail head prev 
@@ -555,51 +639,59 @@ let parse cs =
 	  let tail = Tree(sl) :: tail in
 	  build tail head prev 
 
-	| Token Notrec :: head -> 
-	  let tail = Tree(Bool(false)) :: tail in
-	  build tail head prev 
-
-	| Token Rec :: head ->
-	  let tail = Tree(Bool(true)) :: tail in
-	  build tail head prev 
-
-	| Tree(Term left) :: Token TApp :: Tree(Term right) :: head ->
-	  let head = Tree(Term(App(left,right))) :: head in
+	| Tree(Term left) :: Token Tpp :: Tree(Term right) :: head ->
+	  let head = Tree(Term(Qpp(left,right))) :: head in
 	  build tail head prev
 
-	| Token TLet :: Tree(Bool isrec) :: Tree(String name) :: Tree(Term subterm) :: Token In :: Tree(Term nexterm) :: head -> 
-	  let tail = Tree(Term(Let(isrec, name, [], subterm, nexterm))) :: tail in 
+	| Token TLet :: Token Rex :: Tree(Stringlist sl) :: Tree(Term subterm) :: Token In :: Tree(Term nexterm) :: head -> 
+	  let tail = Tree(Term(QLet(true, List.hd sl, List.tl sl, subterm, nexterm))) :: tail in 
 	  build tail head prev 
 
-	| Token TLet :: Tree(Bool isrec) :: Tree(Stringlist sl) :: Tree(Term subterm) :: Token In :: Tree(Term nexterm) :: head -> 
-	  let tail = Tree(Term(Let(isrec, List.hd sl, List.tl sl, subterm, nexterm))) :: tail in 
-	  build tail head prev 
-
+	| Token TLet :: Tree(Stringlist sl) :: Tree(Term subterm) :: Token In :: Tree(Term nexterm) :: head ->
+           let tail = Tree(Term(QLet(false, List.hd sl, List.tl sl, subterm, nexterm))) :: tail in
+           build tail head prev
+                
 	| Token TFun :: Tree(Stringlist args) :: Tree(Term term) :: head ->
-	  let tail = Tree(Term(Fun(args,term))) :: tail in
-	  build tail head prev 
+	   let tail = Tree(Term(QFun(args,term))) :: tail in
+	   build tail head prev 
 
-	| Token Lparen :: Tree(Term term) :: Token Rparen :: head -> 
-	  let tail = Tree(Term(Paren term)) :: tail in
-	  build tail head prev 
+        | Token TBar :: Tree(Term case) :: Tree(Term body) :: Tree(Term next) :: head ->
+           let tail = Tree(Term next) :: Tree(Matchlist [case,body]) :: tail in 
+           build tail head prev
+
+        | Token TBar :: Tree(Term case) :: Tree(Term body) :: [] ->
+           let tail = Tree(Matchlist [case,body]) :: tail in 
+           build tail [] prev
+
+        | Token TBar :: Tree(Term case) :: Tree(Term body) :: Tree(Matchlist xs) :: head ->
+           let tail = Tree(Matchlist ((case,body)::xs)) :: tail in
+           build tail head prev
+
+        | Token TMatch :: Tree(Term what) :: Tree(Matchlist withs) :: head ->
+           let tail = Tree(Term(QMatch (what, withs))) :: tail in
+           build tail head prev
+           
+        | Token Lparen :: Tree(Term term) :: Token Rparen :: head -> 
+	   let tail = Tree(Term(QParen term)) :: tail in
+	   build tail head prev 
 	    
 	| Token TRewrite :: Tree(Term lterm) :: Tree(Term rterm) :: Token In :: Tree (Term where) :: head ->
-	   let tail = Tree(Term(Rewrite(lterm, rterm, where))) :: tail in
+	   let tail = Tree(Term(QRewrite(lterm, rterm, where))) :: tail in
 	   build tail head prev
 
-	| Lex (Id id) :: head ->
+	| Lexon (Id id) :: head ->
 	  let tail = Tree(String id) :: tail in
 	  build tail head prev 
 
-	| Lex (TFin idseq) :: head ->
+	| Lexon (TFin idseq) :: head ->
            (match lex_exponential idseq with
            | None ->
               let id = stringof idseq in
-	      let tail = Tree(Term(Fin id)) :: tail in
+	      let tail = Tree(Term(QFin id)) :: tail in
 	      build tail head prev
 
            | Some(base, sup) ->
-              let term = App(App(Fin "~**~", Fin base), Fin sup) in
+              let term = Qpp(Qpp(QFin "~**~", QFin base), QFin sup) in
               let tail = Tree(Term term) :: tail in
               build tail head prev
            )
@@ -616,92 +708,126 @@ let parse cs =
     in
     build [] run run
   in
-  
-  let rec applyrrs tree =
-    match tree with
-      | Let ( isrec , n , args , st , nt ) ->
-	Let ( isrec , n , args , applyrrs st , applyrrs nt ) 
 
-      | App ( l , r ) ->
-	(
-	  match App ( applyrrs l , applyrrs r ) with
-	  | App ( Let ( isrec , n , args , st , nt ) , r ) ->
-	     applyrrs ( Let ( isrec , n , args , st , App ( nt , r ) ) )
-
-	  | App ( Fun ( args , st ) , r ) ->
-	     applyrrs ( Fun ( args , App ( st , r ) ) )
-	      
-	  | App( l, App ( r1 , r2 ) ) ->
-	     applyrrs ( App ( App ( l , r1 ) , r2 ) )
-
-	  | App (Rewrite (l, r, t), x) ->
-	     applyrrs (Rewrite (l, r, App(t, x)))
-
-	  | t -> t
-	)
-
-      | Fun ( args , st ) ->
-	Fun ( args , applyrrs st )
-
-      | Paren ( t ) -> Paren ( applyrrs t )
-
-      | Rewrite (l, r, t) ->
-	 Rewrite (applyrrs l, applyrrs r, applyrrs t)
-
-      | Fin x ->
-	  Fin x
-
-      | Match ( what, withs ) ->
-	 Match ( applyrrs what, List.map (fun (l, r) -> applyrrs l, applyrrs r) withs )
-  in
-  
-  let build = build run in 
-  match build with
-    | [ Tree(Term(x)) ] -> 
-      applyrrs x , build
-
-    | _ ->
-       Fin "Parsing Error", build
+  lexterm cs [] |> fst |> build
 ;;
 
+let rec applyrrs tree =
+  match tree with
+  | QLet ( isrec , n , args , st , nt ) ->
+     QLet ( isrec , n , args , applyrrs st , applyrrs nt ) 
+         
+  | Qpp ( l , r ) ->
+     (
+       match Qpp ( applyrrs l , applyrrs r ) with
+       | Qpp ( QLet ( isrec , n , args , st , nt ) , r ) ->
+	  applyrrs ( QLet ( isrec , n , args , st , Qpp ( nt , r ) ) )
+                   
+       | Qpp ( QFun ( args , st ) , r ) ->
+	  applyrrs ( QFun ( args , Qpp ( st , r ) ) )
+	           
+       | Qpp( l, Qpp ( r1 , r2 ) ) ->
+	  applyrrs ( Qpp ( Qpp ( l , r1 ) , r2 ) )
+                   
+       | Qpp (QRewrite (l, r, t), x) ->
+	  applyrrs (QRewrite (l, r, Qpp(t, x)))
+                   
+       | t -> t
+     )
+       
+  | QFun ( args , st ) ->
+     QFun ( args , applyrrs st )
+         
+  | QParen ( t ) -> QParen ( applyrrs t )
+                         
+  | QRewrite (l, r, t) ->
+     QRewrite (applyrrs l, applyrrs r, applyrrs t)
+             
+  | QFin x ->
+     QFin x
+         
+  | QMatch ( what, withs ) ->
+     QMatch ( applyrrs what, List.map (fun (l, r) -> applyrrs l, applyrrs r) withs )
+;;
+
+let parse cs =
+  match parse cs with
+  | [ Tree ( Term ( x ) ) ] ->
+     applyrrs x , [ Tree ( Term ( x ) ) ]
+
+  | run ->
+     QFin "parsing error", run
+;;
+
+let rec convQ term =
+  match term with
+  | QLet ( rex, nym, args, subterm, nexterm ) ->
+     Let ( rex, nym, args, convQ subterm, convQ nexterm ) 
+
+  | Qpp ( l , r ) ->
+     Pp ( convQ l , convQ r )
+
+  | QFin ( nym ) ->
+     Fin ( nym )
+  | _ ->
+     failwith "convQ error: ̈̈\"term\" has not been prepped for conversion to internal representation. Try calling \"ir term\""
+;;
+
+let rec traverse ?(termap=emptymap) term =
+  match term with
+  | Let ( _ , nym , _ , _ , next ) ->
+     let termap = IMap.add nym term termap in
+     traverse ~termap:termap next
+
+  | _ ->
+     term, termap
+;;
+
+
+  
 (* ------------------------------------------------------------------------------------------------------------------*)
-(*                                  aero.ml lambda lifting and recursion closure                                      *) 
+(*                                  The IRS ——— Internal Representation Syntax                                       *)
 (* ------------------------------------------------------------------------------------------------------------------*)
 
 
+  
 type memsrc =
-    Arg of int
+  | Arg of int
   | Local of int
   | Global of string
   | Literal of int
-  | Primitive of string
+  | Native of string
   | Hstring of string
-      
+;;    
+
+type instr = 
+  | App of memsrc * memsrc list 
+  | Return of memsrc
+;;
+
+type table = Table of string * string list * instr list
+                                           
 let string_of_src src =
   match src with
     | Local i -> "local " ^ (string_of_int i)
     | Arg i -> "arg " ^ (string_of_int i)
     | Literal n -> "literal " ^ (string_of_int n)
     | Global g -> g
-    | Primitive n -> "primtive " ^ n
+    | Native n -> "primtive " ^ n
     | Hstring n -> n
 ;;
 
 let can_be_arg src =
   match src with
-  | Primitive _ | Global _ -> false
+  | Native _ | Global _ -> false
   | _ -> true
 ;;
-
-type instr = 
-  | Ap of memsrc * memsrc list 
-  | Return of memsrc
 
 let nlocals instrs =
   let rec nlocals instrs num =
     match instrs with
     | [] -> num
-    | Ap (_, _) :: instrs -> nlocals instrs (num+1)
+    | App (_, _) :: instrs -> nlocals instrs (num+1)
     | Return (_) :: instrs -> nlocals instrs num
   in
   nlocals instrs 0
@@ -709,24 +835,169 @@ let nlocals instrs =
 
 let string_of_instr instr =
   match instr with
-  | Ap (src , args) ->
-     ("  apply " ^ (string_of_src src) ^ " " ^ (string_of_int (List.length args))) ::
+  | App (src , args) ->
+     ("  apply " ^ (string_of_src src)) ::
        (List.map (fun src -> "    " ^ (string_of_src src)) args)
   | Return (src) -> 
      ["  return " ^ (string_of_src src)]
 ;;
 
-type table = Table of string * int * instr list
-
 let string_of_table table =
-  let Table (name, nargs, instrs) = table in
+  let Table (name, args, instrs) = table in
   let nlocals = nlocals instrs in
-  let header = "table " ^ name ^ " " ^ (string_of_int nargs) ^ " 0 " ^ (string_of_int nlocals) ^ ":\n" in
-  
+  let nargs = List.length args in
+  let header = "table " ^ name ^ " " ^ (string_of_int nargs) ^ " " ^ (string_of_int nlocals) ^ "\n" in
   let body = cat "\n" (List.flatten (List.map string_of_instr instrs)) in
   header ^ body
 ;;
 
+
+
+(* ------------------------------------------------------------------------------------------------------------------*)
+(*                                aero.ml post conversion to untyped lambda calculus                                 *)
+(* ------------------------------------------------------------------------------------------------------------------*)
+
+  
+
+type calculus =
+  (* core computation semantics *)
+  | L of int * string * calculus
+  | A of calculus * calculus
+  | F of int * string
+
+  (* Input, Output, and Natives *)
+  | I of string
+  | O of string
+  | N of string
+;;
+
+let islambda t =
+  match t with
+  | L ( _ , _ , _ ) -> true
+  | _ -> false
+;;
+  
+let rec lchr term =
+  match term with
+  | L ( i , name , sub ) -> "l" ^ lchr sub
+     
+  | A ( left , right ) -> "a" ^ lchr left ^ lchr right
+	
+  | F ( i , name ) -> ('~' :: '|' :: repeat '|' i) |> List.rev |> stringof 
+
+  | I n -> "(input " ^ n ^ ")"
+                                                                    
+  | O n -> "(output " ^ n ^ ")"
+
+  | N d -> "(native " ^ d ^ ")" 
+;;
+  
+let rec incr abstractiondepth by term =
+  match term with
+  | L ( i, n, st ) -> L ( i+by, n, incr abstractiondepth by st )
+
+  | A ( l, r ) -> A ( incr abstractiondepth by l, incr abstractiondepth by r )
+                    
+  | F ( i, n ) when i < abstractiondepth -> F ( i, n ) 
+
+  | F ( i, n ) -> F ( i+by, n )
+
+  | _ -> term
+;;
+  
+let rec chain inyms onto = 
+  match inyms with
+  | ( i, nym ) :: inyms -> L ( i, nym, chain inyms onto )
+
+  | [] -> onto
+;;
+  
+let beta term =
+  let rec substitute absdepth by what into =
+    match into with
+    | L ( i, n, st ) -> L ( i-1, n, substitute absdepth ( by+1 ) what st )
+
+    | A ( l, r ) -> A ( substitute absdepth by what l, substitute absdepth by what r ) 
+
+    | F ( i, n ) when i > absdepth -> F ( i-1, n )
+
+    | F ( i, n ) when i = absdepth -> incr absdepth by what
+
+    | _ -> into
+  in
+
+  let rec beta term =
+    match term with
+    | A ( L ( i , _ , st ) , r ) -> Some ( substitute i 0 r st )
+
+    | A ( A ( N "~^~" , O l ) , O r ) -> Some ( O ( l ^ r ) )
+
+    | A ( l , r ) ->  ( match beta l, beta r with 
+                        | None, None -> None
+                                          
+                        | x, y -> Some ( A ( someor x l, someor y r ) ) )
+                        
+    | L ( i, n, st ) -> ( match beta st with
+                          | None -> None
+                          | Some st -> Some ( L ( i , n , st ) ) )
+
+    | _ -> None
+  in
+
+  let rec loop term seq i = 
+    match beta term with
+    | None -> term, i
+
+    | Some ( term ) -> loop term seq (i+1)
+  in
+  
+  loop term [] 0
+;;
+  
+(* 
+
+Preliminary translation of aero to λ calculus. Internal Representation can also be translated to λ calculus (postliminary translation), though the format is drastically different:
+
+* pre-translation uses normal de Bruijn indices
+
+* post-translation uses a novel variable encoding, referred to here as localized de Bruijn indices
+
+*)
+
+let rec loa absdepth nymis termap (term : aero) : calculus =
+  match term with
+  | Let ( _, nym, args, subterm, nexterm ) ->
+     let inyms = List.mapi (fun i nym -> (i + absdepth), nym) args in
+     let subnymis = List.fold_left (fun nymis (i, nym) -> IMap.add nym i nymis) nymis inyms in
+
+     let term = loa (absdepth + List.length inyms) subnymis termap subterm |> chain inyms in
+     let termap = IMap.add nym (term, absdepth) termap in
+     loa absdepth nymis termap nexterm
+     
+  | Pp ( l, r ) -> A ( loa absdepth nymis termap l, loa absdepth nymis termap r )
+
+  | Fin nym when IMap.mem nym nymis -> F ( IMap.find nym nymis, nym )
+
+  | Fin nym when IMap.mem nym termap ->
+     let term, term_absdepth = IMap.find nym termap in
+     incr term_absdepth (absdepth - term_absdepth) term 
+
+  | Fin nym when isinput nym -> I nym
+
+  | Fin nym when isoutput nym -> O nym
+
+  | Fin nym -> N nym
+
+;;
+
+let loa = loa 0 emptymap emptymap ;;
+
+(* ------------------------------------------------------------------------------------------------------------------*)
+(*                                  aero.ml lambda lifting and recursion closure                                      *) 
+(* ------------------------------------------------------------------------------------------------------------------*)
+
+
+  
 let prep term =
   let isrecursive name recmap = 
     if IMap.mem name recmap then
@@ -741,16 +1012,16 @@ let prep term =
     let rec a acc seq =
       match seq with
       | x :: seq ->
-	 a (App (acc , Fin x)) seq
+	 a (Qpp (acc , QFin x)) seq
 
       | [] -> 
 	 acc
     in
-    a (Fin head) seq
+    a (QFin head) seq
   in
   let rec prep term recmap bound = 
     match term with
-    | Let ( isrec , name , args , subterm , nexterm ) ->
+    | QLet ( isrec , name , args , subterm , nexterm ) ->
        let subbound =
 	 if isrec then
 	   let kvpl = List.map (fun x -> x , true) (name :: args) in
@@ -765,53 +1036,53 @@ let prep term =
        let subrecmap = add name isrec recmap in
        let subterm = prep subterm subrecmap subbound in
        if isrec then
-	 let nexterm = Let ( false , name , args , applify name (name :: args) , nexterm ) in 
+	 let nexterm = QLet ( false , name , args , applify name (name :: args) , nexterm ) in 
 	 let nexterm = prep nexterm recmap bound in
-	 Let ( false , name , name :: args , subterm , nexterm ) 
+	 QLet ( false , name , name :: args , subterm , nexterm ) 
        else
 	 let nexterm = prep nexterm recmap bound in
-	 Let ( isrec , name , args , subterm , nexterm )
+	 QLet ( isrec , name , args , subterm , nexterm )
 
-    | Fun ( args , subterm ) ->
-       let term = Let ( false , "~~" , args , subterm , Fin "~~" ) in
+    | QFun ( args , subterm ) ->
+       let term = QLet ( false , "~~" , args , subterm , QFin "~~" ) in
        prep term recmap bound
 
-    | App ( App ( lterm , Fin name ) , rterm ) ->
+    | Qpp ( Qpp ( lterm , QFin name ) , rterm ) ->
        if not (IMap.mem name bound)
 	 && ((IMap.mem (binopt name) bound)
-	     || isprimitive (binopt name)) then (
-	   prep (App (App (Fin (binopt name), lterm), rterm)) recmap bound
+	     || isnative (binopt name)) then (
+	   prep (Qpp (Qpp (QFin (binopt name), lterm), rterm)) recmap bound
 	 )
        else
-	 let lterm = prep (App (lterm, Fin name)) recmap bound in
+	 let lterm = prep (Qpp (lterm, QFin name)) recmap bound in
 	 let rterm = prep rterm recmap bound in
-	 App (lterm, rterm)
+	 Qpp (lterm, rterm)
 
-    | App ( lterm , rterm ) ->
+    | Qpp ( lterm , rterm ) ->
        let lterm = prep lterm recmap bound in
        let rterm = prep rterm recmap bound in
-       App (lterm, rterm)
+       Qpp (lterm, rterm)
 
-    | Fin ( name ) ->
+    | QFin ( name ) ->
        if isrecursive name recmap then
-	 App ( Fin name , Fin name )
+	 Qpp ( QFin name, QFin name )
        else
-         Fin name
+         QFin name
               
-    | Paren (term) ->
+    | QParen (term) ->
        prep term recmap bound
 
 
-    | Rewrite ( left, right, term ) ->
+    | QRewrite ( left, right, term ) ->
        let left = prep left recmap bound in
        let right = prep right recmap bound in
        let term = prep term recmap bound in
-       Rewrite ( left, right, term)
+       QRewrite ( left, right, term)
 
-    | Match ( what, withs ) ->
+    | QMatch ( what, withs ) ->
        let what = prep what recmap bound in
        let withs = List.map (fun (l,r) -> prep l recmap bound, prep r recmap bound) withs in
-       Match (what, withs)
+       QMatch (what, withs)
   in
   prep 
     term
@@ -821,13 +1092,13 @@ let prep term =
 
 let rec rreq term rl =
   match term, rl with
-  | App (l, r) , App(rll, rlr) ->
+  | Qpp (l, r) , Qpp(rll, rlr) ->
      rreq l rll && rreq r rlr
 
-  | _ , Fin "~" ->
+  | _ , QFin "~" ->
      true
 
-  | Fin x, Fin y when x = y ->
+  | QFin x, QFin y when x = y ->
      true
 
   | _ -> false
@@ -837,10 +1108,10 @@ let rreq term rrr = rreq term (fst rrr) ;;
 
 let rec match_left acc term rl =
   match term, rl with
-  | App (l, r), App(ll, rr) ->
+  | Qpp (l, r), Qpp(ll, rr) ->
      match_left (match_left acc r rr) l ll
 
-  | x, Fin "~" ->
+  | x, QFin "~" ->
      x :: acc
 
   | _ ->
@@ -849,12 +1120,12 @@ let rec match_left acc term rl =
 
 let rec rewrite rr xs =
   match rr with
-  | App (l, r) ->
+  | Qpp (l, r) ->
      let l, xs = rewrite l xs in
      let r, xs = rewrite r xs in
-     App (l, r), xs
+     Qpp (l, r), xs
 
-  | Fin "~" ->
+  | QFin "~" ->
      List.hd xs, List.tl xs
 
   | x ->
@@ -867,40 +1138,40 @@ let rewrite term rrr =
 
 let rec apply_rewrites rewriterules term =
   match term with
-  | Rewrite (left, right, term) ->
+  | QRewrite (left, right, term) ->
      apply_rewrites ((left,right) :: rewriterules) term
 
-  | Let (isrec, name, args, subterm, nexterm) ->
+  | QLet (isrec, name, args, subterm, nexterm) ->
      let subterm = apply_rewrites rewriterules subterm in
      let nexterm = apply_rewrites rewriterules nexterm in
-     Let (isrec, name, args, subterm, nexterm)
+     QLet (isrec, name, args, subterm, nexterm)
 
-  | Fun (args, subterm) ->
+  | QFun (args, subterm) ->
      let subterm = apply_rewrites rewriterules subterm in
-     Fun (args, subterm)
+     QFun (args, subterm)
 
-  | App (l, r) when List.exists (rreq term) rewriterules ->
+  | Qpp (l, r) when List.exists (rreq term) rewriterules ->
      (
        List.find (rreq term) rewriterules 
 	 |> rewrite term
 	 |> apply_rewrites rewriterules
      )
 
-  | App (l, r) ->
+  | Qpp (l, r) ->
      let l = apply_rewrites rewriterules l in
      let r = apply_rewrites rewriterules r in
-     App (l, r)
+     Qpp (l, r)
 
-  | Fin x ->
-     Fin x
+  | QFin x ->
+     QFin x
 
-  | Paren term ->
+  | QParen term ->
      apply_rewrites rewriterules term
 
-  | Match (what, withs) ->
+  | QMatch (what, withs) ->
      let what = apply_rewrites rewriterules what in
      let withs = List.map (fun (l,r) -> apply_rewrites rewriterules l, apply_rewrites rewriterules r) withs in
-     Match (what, withs)
+     QMatch (what, withs)
 ;;
 
 let stringdecl string = 
@@ -910,19 +1181,20 @@ let stringdecl string =
 	decl
 	  
       | c :: chars ->
-	App ( App ( Fin "cons" , Fin (string_of_int (int_of_char c))) , form chars decl )
+	Qpp ( Qpp ( QFin "cons" , QFin (string_of_int (int_of_char c))) , form chars decl )
   in
-  form (charlistof (String.sub string 1 (String.length string - 2))) (Fin "nil")
+  form (charlistof (String.sub string 1 (String.length string - 2))) (QFin "nil")
 ;;
+  
 let get_core head = 
   match head with
-  | Fin core -> core
+  | QFin core -> core
   | _ -> "~"
 ;;
 
 let rec linearize_apps acc term =
   match term with
-  | App ( left , right ) ->
+  | Qpp ( left , right ) ->
      linearize_apps (right :: acc) left
        
   | x ->
@@ -933,9 +1205,6 @@ let linearize_apps term = linearize_apps [] term
 
 let rec match_constructor_list reference proposal acc =
   match reference, proposal with
-  | [] , [] ->
-     []
-
   | r :: reference, p :: proposal when r = p ->
      match_constructor_list
        reference
@@ -963,7 +1232,7 @@ let constructor_set ctors =
   List.hd ctors
   |> snd
   |> List.rev
-  |> ct (List.tl ctors)
+  |> ct ctors
 ;;
 
 let rec filter_out predicate _in _out list =
@@ -991,19 +1260,17 @@ let rec take_pre_h reference list =
 
 let take_pre reference list = take_pre_h reference (List.rev list)
 
-let rec app_all_h what tos =
+let rec app_all what tos =
   match tos with
   | [] -> what
   | x :: tos ->
-     app_all_h (App ( what, x )) tos
+     app_all (Qpp ( what, x )) tos
 ;;
   
-let app_all what tos = app_all_h what (List.rev tos)
-
 let desugar_matches term =
   let rec dm argmap term = 
     match term with
-    | Match ( what, withs ) ->
+    | QMatch ( what, withs ) ->
        let rec generate_term what withs =
 	 let ctors_ref =
 	   (List.map
@@ -1015,7 +1282,7 @@ let desugar_matches term =
 	 let rec proc ctors withs =
 	   match ctors with
 	   | [] ->
-	      app_all what (List.map (fun x -> Fin x) ctors_ref)
+	      app_all what (List.map (fun x -> QFin x) ctors_ref)
 
 	   | ctor :: ctors ->
 	      let args = take_pre ctors_ref (IMap.find ctor argmap) in	      
@@ -1025,19 +1292,19 @@ let desugar_matches term =
 		 let subterm =
 		   match wildcards with
 		   | [] ->
-		      Fun (["~~"], Fin "~~")
+		      QFun (["~~"], QFin "~~")
 		      
 		   | (_,_,x) :: _ -> x
 		 in
 		 let nexterm = proc ctors withs in
-		 Let ( false, ctor, args, subterm, nexterm)
+		 QLet ( false, ctor, args, subterm, nexterm)
 
 	      | _ ->
 		 let subterm =
-		   Fin "TODO"
+		   QFin "TODO"
 		 in
 		 let nexterm = proc ctors withs in
-		 Let ( false, ctor, args, subterm, nexterm )
+		 QLet ( false, ctor, args, subterm, nexterm )
 	 in
 	 proc ctors_ref	withs
        in
@@ -1050,32 +1317,32 @@ let desugar_matches term =
        in
        generate_term what withs
 	 
-    | Let ( isrec, name, args, subterm, nexterm ) ->
+    | QLet ( isrec, name, args, subterm, nexterm ) ->
        let subterm = dm argmap subterm in
        let argmap = IMap.add name args argmap in
        let nexterm = dm argmap nexterm in
-       Let ( isrec, name, args, subterm, nexterm )
+       QLet ( isrec, name, args, subterm, nexterm )
 
-    | Fun ( args, subterm ) ->
+    | QFun ( args, subterm ) ->
        let subterm = dm argmap subterm in
-       Fun ( args, subterm )
+       QFun ( args, subterm )
 
-    | App ( left, right ) ->
+    | Qpp ( left, right ) ->
        let left = dm argmap left in
        let right = dm argmap right in
-       App ( left, right )
+       Qpp ( left, right )
 
-    | Fin x ->
-       Fin x
+    | QFin x ->
+       QFin x
 
-    | Rewrite ( l, r, where ) ->
+    | QRewrite ( l, r, where ) ->
        let l = dm argmap l in
        let r = dm argmap r in
        let where = dm argmap where in
-       Rewrite ( l, r, where )
+       QRewrite ( l, r, where )
 
-    | Paren t ->
-       Paren ( dm argmap t )
+    | QParen t ->
+       QParen ( dm argmap t )
   in
   dm
     emptymap
@@ -1085,8 +1352,8 @@ let desugar_matches term =
 let rec find_source source_map name = 
   if IMap.mem name source_map then
     IMap.find name source_map
-  else if isprimitive name then
-    Primitive name
+  else if isnative name then
+    Native name
   else if isdecimal name then
     Literal (int_of_string name)
   else if isstring name then
@@ -1110,7 +1377,7 @@ let tableau sources tables term =
       | [] ->
 	 (match List.rev acc with
 	 | [] -> instrs , index
-	 | head :: tail -> Ap (head , tail) :: instrs , index)
+	 | head :: tail -> App (head , tail) :: instrs , index)
 	   
       | Global global :: appsources ->
 	 let freesources =
@@ -1118,7 +1385,7 @@ let tableau sources tables term =
 	     (fun a -> find_source sources a)
 	     (find_free free global)
 	 in
-	 let instrs = Ap ( Global global , freesources ) :: instrs in
+	 let instrs = App ( Global global , freesources ) :: instrs in
 	 let acc = Local index :: acc in
 	 declare 
 	   appsources
@@ -1126,8 +1393,8 @@ let tableau sources tables term =
 	   (index + 1)
 	   acc
 
-      | Primitive p :: appsources ->
-	 let instrs = Ap ( Primitive p , [] ) :: instrs in
+      | Native p :: appsources ->
+	 let instrs = App ( Native p , [] ) :: instrs in
 	 let acc = Local index :: acc in
 	 declare 
 	   appsources
@@ -1153,7 +1420,7 @@ let tableau sources tables term =
     let linearize_apps term sources free tables instrs index = 
       let rec linapp term free tables acc instrs index =
 	match term with
-	| App (left , right) ->
+	| Pp (left , right) ->
 	   (match 
 	       linapp
 		 right
@@ -1282,7 +1549,7 @@ let tableau sources tables term =
 	 | [ src ] -> 
 	    Table (
 	      global,
-	      List.length subscoped,
+	      subscoped,
 	      Return src :: subinstrs |> List.rev
 	    ) :: tables
 
@@ -1296,8 +1563,8 @@ let tableau sources tables term =
 		subindex 
 	    in
 	    Table ( 
-	      global , 
-	      List.length subscoped , 
+	      global, 
+	      subscoped, 
 	      List.rev ( Return ( Local subindex ) :: subinstrs )
 	    ) :: tables
        in
@@ -1316,7 +1583,7 @@ let tableau sources tables term =
 	 instrs 
 	 index 
 
-    | App ( left , right ) ->
+    | Pp ( left , right ) ->
        let tables , instrs , index = 
 	 linearize_apps
 	   term
@@ -1329,31 +1596,9 @@ let tableau sources tables term =
 
        free , tables , appsources , instrs , index, sources
 
-    | Fun ( args , term ) -> 
-       let term = Let ( false , "~~" , args , term , Fin "~~" ) in
-       tableau
-	 term
-	 path
-	 sources
-	 level
-	 scoped
-	 free
-	 tables
-	 appsources
-	 instrs
-	 index
-	 
     | Fin fin -> 
        free , tables , find_source sources fin :: appsources , instrs , index, sources
 
-    | Paren term ->
-       free, tables, appsources, instrs, index, sources
-
-    | Rewrite (left, right, term) ->
-       free, tables, appsources, instrs, index, sources
-
-    | Match (what, withs) ->
-       free, tables, appsources, instrs, index, sources
   in
   
   let free , tables , appsources , instrs , index, sources = 
@@ -1373,7 +1618,7 @@ let tableau sources tables term =
   let main =
     match appsources with
     | [ src ] ->
-       Table ( "main", 0, List.rev ( Return src :: instrs ) )
+       Table ( "main", [], List.rev ( Return src :: instrs ) )
 
     | _ ->
        let instrs , index = 
@@ -1387,7 +1632,7 @@ let tableau sources tables term =
 
        let instrs = Return (Local index) :: instrs in
 
-       Table ( "main", 0, List.rev instrs ) 
+       Table ( "main", [], List.rev instrs ) 
   in
 
   main :: tables, sources
@@ -1396,7 +1641,7 @@ let tableau sources tables term =
 let writeprogram tables sources prefix =
   let outfilename = prefix ^  ".cem" in
   let oc = open_out outfilename in
-  let s = cat "\n\n" (List.map string_of_table tables) in
+  let s = cat "\n\n" (List.map string_of_table (List.rev tables)) in
   let _ = output_string oc s in 
   let _ = close_out oc in 
   let _ = print_string ("\twrote to " ^ outfilename ^ "\n") in  
@@ -1404,161 +1649,119 @@ let writeprogram tables sources prefix =
 ;;
 
 
+  
 (* ------------------------------------------------------------------------------------------------------------------*)
-(*                                  aero.ml conversion to untyped lambda calculus                                     *)
+(*                                aero.ml post conversion to untyped lambda calculus                                 *)
 (* ------------------------------------------------------------------------------------------------------------------*)
 
 
-type calculus =
-    L of int * string * calculus
-  | A of calculus * calculus
-  | F of int * string
-  | O of string
-  | P of string
 
-let incr term x = 
-  let rec incr term = 
+(* 
+
+The post-translation to lambda calculus, and all the reductions thereafter, use a specialized, novel encoding of lambda calulus.
+
+This encoding is a type of localized du Bruijn indices, where indices can **only** refer to the previous "lambd chain".
+
+The methods encapsulating this encoding are referred to with the prefix "quick", i.e. quickreduce
+
+ *)
+
+let quickincr by term =
+  let rec qi term = 
     match term with
-      | A ( l , r ) ->
-	A ( incr l , incr r )
+      | A ( l, r ) -> A ( qi l, qi r )
 
-      | F ( i , n ) ->
-	 F ( i + x , n )
+      | F ( i, n ) -> F ( i+by, n )
 
       | _ -> term
   in
   let rec first term = 
     match term with
-      | L ( i , n , st ) ->
-	L ( i + x , n , first st )
+      | L ( i, n, st ) -> L ( i + by, n, first st )
 
-      | _ ->
-	incr term 
+      | _ -> qi term
   in
   first term
 ;;
 
-let rec lchr term =
-  match term with
-  | L ( i , name , sub ) -> "l" ^ lchr sub
+let rec quickchain inyms by onto =
+  match inyms with
+  | ( i, nym ) :: inyms -> L ( i, nym, quickchain inyms (by+1) onto )
      
-  | A ( left , right ) -> "a" ^ lchr left ^ lchr right
-	
-  | F ( i , name ) -> ('~' :: '|' :: repeat '|' i) |> List.rev |> stringof 
+  | [] when islambda onto -> quickincr by onto
 
-  | P d -> "(native " ^ d ^ ")" 
-	   
-  | O n -> "(literal " ^ n ^ ")"
+  | [] -> onto
 ;;
-
-let quickreduce term laze str = 
-  let rec sub what into i =
+  
+let quickreduce term =
+  let rec sub what into = 
     match into with
-    | F ( j , n ) ->
-       if i = j then
-	 what
-       else
-	 F ( j - 1 , n )
+    | F ( 0, n ) -> what
+                      
+    | F ( i, n ) -> F ( i-1, n )
 
-    | A ( l , r ) ->
-       let l = sub what l i in
-       let r = sub what r i in
-       A ( l , r )
+    | A ( l, r ) -> A ( sub what l, sub what r )
 
     | _ -> into
   in
 
-  let rec enter what into i x =
+  let rec enter by what into = 
     match into with
-    | L ( j , n , st ) ->
-       L ( j-1 , n , enter what st i (x+1) )
+    | L ( i, n, st ) -> L ( i-1, n, enter ( by+1 ) what st )
 	 
-    | F ( j , n) ->
-       if i = j then
-	 incr what x
-       else
-	 F ( j - 1 , n )
+    | F ( 0, n ) -> quickincr by what
 
-    | _ ->
-       sub what into i
+    | _ -> sub what into
   in
 
   let rec qr term =
     match term with
-    | A ( L ( i , _ , st ) , r ) ->
-       Some ( enter r st i 0 )
+    | A ( L ( 0 , _ , st ) , r ) -> Some ( enter 0 r st )
 
-    | A ( A ( P "~^~" , O l ) , O r ) ->
-       Some ( O ( l ^ r ) )
+    | A ( A ( N "~^~" , O l ) , O r ) -> Some ( O ( l ^ r ) )
 
-    | A ( l , r ) -> (
-      match qr l with
-      | None -> (
-	match qr r with
-	| Some r ->
-	   Some ( A ( l , r ) )
-
-	| None -> 
-	   None
-      )
-	 
-      | Some l ->
-	 Some ( A ( l , r ) )
-    )
-       
+    | A ( l , r ) -> ( match qr l, qr r with
+                        | None, None -> None
+                                          
+                        | x, y -> Some ( A ( someor x l, someor y r ) ) )
+                                          
+    | O ( str ) ->
+       let _ = print_string str in
+       let _ = flush stdout in
+       None
+      
     | _ -> None
   in
 
-  let rec loop term seq i = 
+  let rec loop seq reds term = 
     match qr term with
-    | None ->
-       let _ =
-	 match term with
-	 | O ( i ) -> print_string (strip_tilde i)
-	 | _ -> ()
-       in
-       term , i
+    | None -> term, reds
 
-    | Some ( term ) ->
-       loop term seq (i+1)
+    | Some ( term' ) -> loop ( term :: seq ) ( reds+1 ) term' 
   in
   
-  loop term [] 0
+  loop [] 0 term
 ;;
 
-let rec lambdachain i name n onto =
-  if n = 0 then
-    match onto with
-      | L ( _ , _ , _ ) ->
-	incr onto i
-
-      | _ -> 
-	onto
-  else
-    L       
-      ( i , name ,
-	lambdachain
-	  ( i + 1 )
-	  name
-	  ( n - 1 )
-	  onto 
-      )
-;;
-
-let calculate tables =
+let postcalc tables =
   let find_source source sources =
     match source with
     | Literal l -> O (string_of_int l)
     | Hstring n -> O n
-    | Primitive n -> P n
-    | _ -> IMap.find (string_of_src source) sources
+    | Native n -> N n
+    | _ ->
+       try 
+         IMap.find (string_of_src source) sources
+       with
+         _ -> failwith ("Could not find " ^ (string_of_src source))
+                   
   in
   let rec abracadabra tabs table abstraction sources = 
-    let rec alikazam tabs instrs abstraction sources i = 
+    let rec alakazam tabs instrs abstraction sources i = 
       match instrs with
 	| [] -> F ( 0 , "" )
 	  
-	| Ap ( source , args ) :: instrs -> 
+	| App ( source , args ) :: instrs -> 
 	  let rec applin args acc =
 	    match args with
 	      | [] -> acc
@@ -1568,7 +1771,7 @@ let calculate tables =
 		  ( A ( acc , find_source arg sources ) )
 	  in
 	  let aterm =
-	    match source with
+ 	    match source with
 	      | Global g ->
 		let gterm = 
 		  abracadabra
@@ -1595,7 +1798,7 @@ let calculate tables =
 	      sources
 	  in
 
-	  alikazam
+	  alakazam
 	    tabs
 	    instrs
 	    abstraction
@@ -1616,31 +1819,26 @@ let calculate tables =
 	      find_source source sources
     in
 
-    let Table ( name , numargs , instrs ) = table in
-    let rec addargs i sources = 
-      if i = numargs then
-	sources
-      else
-	let sources = IMap.add (string_of_src (Arg i)) (F ( i , "x" ^ (string_of_int i))) sources in
-	addargs (i+1) sources
+    let Table ( name , args , instrs ) = table in
+
+    let inyms = List.mapi ( fun i nym -> i , nym ) args in
+    let sources =
+      List.fold_left
+        (fun sources (i, nym) -> IMap.add (string_of_src (Arg i)) (F (i, nym)) sources)
+        sources
+        inyms
     in
-    let sources = addargs 0 sources in
     
-    lambdachain
-      0 (* abstraction *)
-      name
-      numargs
-      (
-	alikazam
-	  tabs 
-	  instrs
-	  abstraction 
-	  sources 
-	  0
-      )
+    alakazam
+      tabs 
+      instrs
+      abstraction 
+      sources 
+      0
+    |> quickchain inyms 0
   in
 
-  let rec calculate tables tabs = 
+  let rec postcalc tables tabs = 
     match tables with
       | main :: [] ->
 	abracadabra
@@ -1650,25 +1848,40 @@ let calculate tables =
 	  emptymap
 
       | table :: tables ->
-	let Table ( name , numargs , instrs ) = table in
+	let Table ( name , _ , _ ) = table in
 	let tabs = IMap.add name table tabs in
-	calculate tables tabs
+	postcalc tables tabs
 
       | _ -> 
 	F (0 , "")
   in
 
-  calculate (List.rev tables) emptymap
+  postcalc (List.rev tables) emptymap
 ;;
 
-let simulate tables sources prefix =
-  let lambdatree = calculate tables in
-  let fin , red = quickreduce lambdatree false lchr in
-  let _ = print_string "\nnumber of beta reductions: " in
-  let _ = print_string (string_of_int red) in 
-  let _ = print_string "\n" in
-  ()
+let postsim tables sources prefix =
+  tables
+  |> postcalc
+  |> quickreduce
+  |> function
+    | fin , red ->
+       let _ = print_string "\nnumber of beta reductions: " in
+       let _ = print_string (string_of_int red) in 
+       let _ = print_string "\n" in
+       ()
 ;;
+
+(* 
+
+Final methods to get both the lambda calculus translations, in expanded and fully reduced forms
+
+*)
+let preloa_ str = str |> charlistof |> parse |> fst |> prep |> convQ |> loa |> (fun t -> lchr t , lchr (beta t |> fst)) ;;
+let preloa file = preloa_ (str_file file) ;; 
+
+let postloa_ str = str |> charlistof |> parse |> fst |> prep |> convQ |> tableau emptymap [] |> (fun (ts, ss) -> postcalc ts) |> (fun t -> lchr t , lchr (quickreduce t |> fst)) ;;
+let postloa file = postloa_ (str_file file) ;;
+
 
 
 (* ------------------------------------------------------------------------------------------------------------------*)
@@ -1852,7 +2065,7 @@ let bundle array n pad =
   bundle array []
 ;;
 
-let compile tables sources =
+let evm tables sources =
   let box i size =
     let rec box i acc =
       if i = 0 then
@@ -1874,7 +2087,7 @@ let compile tables sources =
   let table_uplook =
     List.fold_left
       (fun uplook table ->
-	let Table(name, numargs, instrs) = table in
+	let Table(name, _, _) = table in
 	IMap.add name table uplook)
       emptymap
       tables
@@ -1895,7 +2108,7 @@ let compile tables sources =
       IMap.find name !line_uplook
   in  
 
-  let dependencies_get dep_ops deps compile =
+  let dependencies_get dep_ops deps evm =
     let rec dg deps dep_ops =
       match deps with
       | [] ->
@@ -1907,12 +2120,12 @@ let compile tables sources =
 	   dg deps dep_ops
 	 with
 	   _ ->
-	     dg deps (compile dep dep_ops)
+	     dg deps (evm dep dep_ops)
     in
     dg deps dep_ops
   in
   
-  let rec compile goal dep_ops =
+  let rec evm goal dep_ops =
     let dep_ops, ops =
       match goal with
       | "info" ->
@@ -1968,7 +2181,7 @@ let compile tables sources =
 	 dep_ops, ops
 	   
       | "copy" ->
-	 let dep_ops = dependencies_get dep_ops ["info"] compile in
+	 let dep_ops = dependencies_get dep_ops ["info"] evm in
 	 let ops = 
 	   let _1 =
 	     let _1_1 =
@@ -2061,7 +2274,7 @@ let compile tables sources =
 	 dep_ops, ops
 
       | "primeval" ->
-	 let dep_ops = dependencies_get dep_ops ["eval"] compile in
+	 let dep_ops = dependencies_get dep_ops ["eval"] evm in
 	 let ops =
 	   let _1 =
 	     let _1_1 =
@@ -2159,7 +2372,7 @@ let compile tables sources =
 
 	   
       | "eval" ->
-	 let dep_ops = dependencies_get dep_ops ["info"] compile in
+	 let dep_ops = dependencies_get dep_ops ["info"] evm in
 	 let ops =
 	   let _1 =
 	     let _1_1 =
@@ -2225,7 +2438,7 @@ let compile tables sources =
 	 dep_ops, ops
 
       | "app" ->
-	 let dep_ops = dependencies_get dep_ops ["info";"copy";"eval"] compile in
+	 let dep_ops = dependencies_get dep_ops ["info";"copy";"eval"] evm in
 	 let ops =
 	   let _1 =
 	     let _1_1 =
@@ -2363,7 +2576,7 @@ let compile tables sources =
 	 dep_ops, ops
 	   
       | "expand" ->
-	 let dep_ops = dependencies_get dep_ops ["eval"] compile in
+	 let dep_ops = dependencies_get dep_ops ["eval"] evm in
 	 let ops =
 	   let _1 =
 	     let _1_1 =
@@ -2458,7 +2671,7 @@ let compile tables sources =
 	 dep_ops, ops
 	   
       | "~=~" ->
-	 let dep_ops = dependencies_get dep_ops [ "info"; "true"; "false" ] compile in
+	 let dep_ops = dependencies_get dep_ops [ "info"; "true"; "false" ] evm in
 	 let ops =
 	   let _1 =
 	     let _1_1 =
@@ -2649,7 +2862,7 @@ let compile tables sources =
 	 dep_ops, ops	   
 
       | "~^~" ->
-	 let dep_ops = dependencies_get dep_ops ["copy";"expand"] compile in
+	 let dep_ops = dependencies_get dep_ops ["copy";"expand"] evm in
 	 let ops =
 	   let _1 =
 	     let _1_1 =
@@ -2834,8 +3047,8 @@ let compile tables sources =
 	 in
 	 dep_ops, ops
 	 
-      | _ when isprimitive goal ->
-	 let dep_ops = dependencies_get dep_ops ["primeval"] compile in
+      | _ when isnative goal ->
+	 let dep_ops = dependencies_get dep_ops ["primeval"] evm in
 	 let ops =
 	   let _1 =
 	     let _1_1 =
@@ -2891,7 +3104,7 @@ let compile tables sources =
 	 dep_ops, ops
 	   
       | _ ->
-	 let Table(name,numargs,instrs) = IMap.find goal table_uplook in
+	 let Table ( name, _, instrs ) = IMap.find goal table_uplook in
 	 let rec bodyc body =
 	   match body with
 	   | Local i :: body ->
@@ -3126,7 +3339,7 @@ let compile tables sources =
 	      |]
 
 	   | _ ->
-	      let _ = print_string "matched primitive or global in body of application (not yet supported)" in
+	      let _ = print_string "matched native or global in body of application (not yet supported)" in
 	      let _ = flush stdout in
 	      [||]
 	 in
@@ -3144,13 +3357,13 @@ let compile tables sources =
 	 *)
 	 let rec subc instrs local_index dep_ops ops = 
 	   match instrs with
-	   | Ap(Local(i), body) :: instrs ->
+	   | App ( Local(i), body ) :: instrs ->
 	      let deps =
 		match body with
 		| [] -> ["copy"]
 		| _ -> ["app";"copy"]
 	      in
-	      let dep_ops = dependencies_get dep_ops deps compile in
+	      let dep_ops = dependencies_get dep_ops deps evm in
 	      let ops =
 		let _1 =
 		  [| (* :caller, !memory, !args, !locals *)
@@ -3196,13 +3409,13 @@ let compile tables sources =
 	      in
 	      subc instrs (local_index + 1) dep_ops ops  
 		
-	   | Ap(Arg(i), body) :: instrs ->
+	   | App ( Arg(i), body ) :: instrs ->
 	      let deps =
 		match body with
 		| [] -> ["copy"]
 		| _ -> ["app";"copy"]
 	      in
-	      let dep_ops = dependencies_get dep_ops deps compile in
+	      let dep_ops = dependencies_get dep_ops deps evm in
 	      let ops =
 		let _1 =
 		  [|
@@ -3249,13 +3462,13 @@ let compile tables sources =
 	      in
 	      subc instrs (local_index + 1) dep_ops ops
 
-	   | Ap(Literal(i), body) :: instrs ->
+	   | App ( Literal(i), body ) :: instrs ->
 	      let deps =
 		match body with
 		| [] -> []
 		| _ -> ["app"]
 	      in
-	      let dep_ops = dependencies_get dep_ops deps compile in
+	      let dep_ops = dependencies_get dep_ops deps evm in
 	      let ops =
 		let _1 =
 		  [| (* :caller, !memory, !args, !locals *)
@@ -3291,13 +3504,13 @@ let compile tables sources =
 	      in
 	      subc instrs (local_index + 1) dep_ops ops
 
-	   | Ap(Hstring(n), body) :: instrs ->
+	   | App ( Hstring(n), body ) :: instrs ->
 	      let deps =
 		match body with
 		| [] -> []
 		| _ -> ["app"]
 	      in
-	      let dep_ops = dependencies_get dep_ops deps compile in	      
+	      let dep_ops = dependencies_get dep_ops deps evm in	      
 	      let data c = Data (int_of_char c) in
 	      let bytes =
 		unquote n |> charlistof |> List.map data |> Array.of_list
@@ -3380,13 +3593,13 @@ let compile tables sources =
 
 	      subc instrs (local_index + 1) dep_ops ops
 		
-	   | Ap(Primitive(p), body) :: instrs ->
+	   | App ( Native(p), body ) :: instrs ->
 	      let deps =
 		match body with
 		| [] -> [p]
 		| _ -> ["app";p]
 	      in
-	      let dep_ops = dependencies_get dep_ops deps compile in
+	      let dep_ops = dependencies_get dep_ops deps evm in
 	      let ops =
 		let _1 = [| DUP3 |] in
 		let _2 = push (primarity p) in
@@ -3432,14 +3645,15 @@ let compile tables sources =
 	      in
 	      subc instrs (local_index + 1) dep_ops ops
 		
-	   | Ap(Global(g), body) :: instrs ->
+	   | App ( Global(g), body ) :: instrs ->
 	      let deps =
 		match body with
 		| [] -> [g]
 		| _ -> ["app";g]
 	      in
-	      let dep_ops = dependencies_get dep_ops deps compile in
-	      let Table(_, numargs, _) = IMap.find g table_uplook in
+	      let dep_ops = dependencies_get dep_ops deps evm in
+	      let Table(_, args, _) = IMap.find g table_uplook in
+              let numargs = List.length args in
 	      let ops =
 		let _1 =
 		  [|
@@ -3496,7 +3710,7 @@ let compile tables sources =
 	      subc instrs (local_index + 1) dep_ops ops
 		
 	   | Return(Local(i)) :: instrs ->
-	      let dep_ops = dependencies_get dep_ops ["eval"] compile in
+	      let dep_ops = dependencies_get dep_ops ["eval"] evm in
 	      let ops =
 		let _1 = push i in
 		let _2 =
@@ -3519,7 +3733,7 @@ let compile tables sources =
 		
 	   | Return(Arg(i)) :: instrs ->
 	      
-	      let dep_ops = dependencies_get dep_ops ["eval"] compile in
+	      let dep_ops = dependencies_get dep_ops ["eval"] evm in
 	      let ops =
 		let _1 =
 		  [| (* ..., :caller, !memory, !args, !locals *)
@@ -3662,8 +3876,9 @@ let compile tables sources =
 
 	   | Return (Global g) :: instrs ->
 	      let deps = [ g ] in
-	      let dep_ops = dependencies_get dep_ops deps compile in
-	      let Table(_, numargs, _) = IMap.find g table_uplook in
+	      let dep_ops = dependencies_get dep_ops deps evm in
+	      let Table(_, args, _) = IMap.find g table_uplook in
+              let numargs = List.length args in
 	      let ops =
 		let _1 =
 		  [|
@@ -3728,7 +3943,7 @@ let compile tables sources =
 	      dep_ops, ops
 
 	   | _ ->
-	      let _ = print_string "matched a return of a primitive (not yet supported)" in
+	      let _ = print_string "matched a return of a native (not yet supported)" in
 	      let _ = flush stdout in
 	      let ops =
 		let _1 = [| POP; POP; POP; JUMP |] in
@@ -3765,7 +3980,7 @@ let compile tables sources =
     let _ = line_add goal line in
     Array.append dep_ops ops    
   in
-  let ops = compile "main" [||] in
+  let ops = evm "main" [||] in
   let len = Array.length ops + headersize in
   let load_call =
     Array.concat
@@ -3865,7 +4080,7 @@ let compile tables sources =
 ;;
 
 let ethereum_human_readable_compile tables sources prefix =
-  compile tables sources |> Array.to_list |> List.map strop |> cat "\n" |> print_string
+  evm tables sources |> Array.to_list |> List.map strop |> cat "\n" |> print_string
 ;;
 
 let ehrc = ethereum_human_readable_compile ;;
@@ -3924,7 +4139,7 @@ var test = test_contract.new(
 ;;
 
 let web3g tables sources prefix =
-  web3_generate (compile tables sources) prefix
+  web3_generate (evm tables sources) prefix
 ;;
 
 let code = function
@@ -4020,7 +4235,7 @@ let rec args =
      dowith writeprogram)
   ::
     ("calc", "Simulate the computation using lambda calculus",
-     dowith simulate)
+     dowith postsim)
   (*  ::
       ("--dis", "Dissasemble EVM bytecode",
       fun () -> disassemble hex) *)
@@ -4070,50 +4285,63 @@ let filename () =
     "lib.ml"
 ;;
 
-let str_file filename = 
-  let ic = open_in filename in
-  let iclen = in_channel_length ic in
-  let contents = Bytes.create iclen in
-  let _ = really_input ic contents 0 iclen in
-  let _ = close_in ic in
-  contents
+let ir sources tables rrs term =
+  term
+  |> prep
+  |> apply_rewrites rrs
+  |> convQ
+  |> tableau sources tables
 ;;
 
-let ir cs sources tables =
+let scratchies ?(sources=emptymap) ?(tables=[]) ?(rrs=[]) cs =
   cs
   |> parse
   |> fst
-  |> prep
-  |> apply_rewrites []
-  |> (tableau sources tables)
+  |> ir sources tables rrs
 ;;
 
-let scratch cs =
-  ir cs emptymap []  
+let scratch str = 
+  str
+  |> charlistof
+  |> scratchies
 ;;
-
+    
 let scratch_file filename = 
-  str_file filename |> charlistof |> scratch
+  filename
+  |> str_file
+  |> scratch
 ;;
-  
-let try_parse_singular_let s =
-  match parse s |> snd with
-  | Token TLet :: Tree(Bool isrec) :: Tree(String name) :: Tree(Term subterm) :: Token In :: [] ->
-     Some ( Let (isrec, name, [], subterm, Fin name) )
 
-  | Token TLet :: Tree(Bool isrec) :: Tree(Stringlist sl) :: Tree(Term subterm) :: Token In :: [] ->
-     Some ( Let (isrec, List.hd sl, List.tl sl, subterm, Fin (List.hd sl)) )
-     
+let precalc str =
+  let loa = str
+            |> charlistof
+            |> parse
+            |> fst
+            |> prep
+            |> apply_rewrites []
+            |> convQ
+            |> loa
+  in
+  lchr loa  
+;;
+
+let try_parse_singular_let cs =
+  match parse cs |> snd with
+  | Token TLet :: Token Rex :: Tree(Stringlist sl) :: Tree(Term subterm) :: Token In :: [] ->
+     let term = QLet (true, List.hd sl, List.tl sl, subterm, QFin (List.hd sl)) in
+     Some term
+
+  | Token TLet :: Tree(Stringlist sl) :: Tree(Term subterm) :: Token In :: [] ->
+     let term = QLet (false, List.hd sl, List.tl sl, subterm, QFin (List.hd sl)) in
+     Some term
+
   | _ ->
      None     
 ;;
 
-let some = function
-  | Some x -> x
-  | _ -> failwith "is something"
-
 let preamble () = 
   print_string ("
+
 \t~
 
 \taero.ml version " ^ version ^ "
@@ -4155,88 +4383,95 @@ let aero () =
   let _ = prompt () in
   let _ = flush stdout in
   
-  let rec aero cs tables sources main =
+  let rec aero cs tables sources main lambda =
     try
-      orea ( input_char stdin :: cs ) tables sources main
+      orea ( input_char stdin :: cs ) tables sources main lambda
     with
       _ ->
 	false
 	  
-  and orea cs tables sources main =
+  and orea cs tables sources main lambda =
     match shellify cs with
     | x when IMap.mem x parameter_map ->
        let _ = process_arg (optional_cone main tables) sources "~" x in
        let _ = prompt () in
        let _ = flush stdout in
-       aero [] tables sources main
+       aero [] tables sources main lambda
 
     | x when x = itacsuf ->
        let _ = print_string obfuscation in
        let _ = prompt () in
        let _ = flush stdout in
-       aero [] tables sources main
-       
+       aero [] tables sources main lambda
        
     | "show c" | "show w" | "aero.ml" | "aero" | "aero ()" ->
        let _ = preamble () in
        let _ = prompt () in
        let _ = flush stdout in
-       aero [] tables sources None
+       aero [] tables sources None (O "")
 	 
     | "help" ->
        let _ = help () in
        let _ = prompt () in
        let _ = flush stdout in
-       aero [] tables sources main
+       aero [] tables sources main lambda
 	 
     | "create" ->
        let _ = print_string "contract creation not yet supported in aero\n" in
        let _ = prompt () in
        let _ = flush stdout in
-       aero [] tables sources main
+       aero [] tables sources main lambda
 
     | "exit" | "quit" ->
        true
-	 
+
+    | "beta" ->
+       let lambda, _ = quickreduce lambda in
+       let _ = print_string ("\n\t: " ^ lchr lambda) in
+       let _ = print_string "\n\n" in
+       let _ = prompt () in
+       let _ = flush stdout in
+       aero [] tables sources main lambda
+         
     | x ->
        match cs with
        | '\n' :: '\n' :: '\n' :: cs -> (
 	 let _ = print_string "\n\theed not .. \n\n" in
 	 let _ = prompt () in
 	 let _ = flush stdout in
-	 aero [] tables sources main
+	 aero [] tables sources main lambda
        )
 
        | '\n' :: _ -> (
-	 try
+         try
 	   let tables, sources = (
 	     try
-	       ir (List.rev cs) sources tables
+	       scratchies ~sources:sources ~tables:tables (List.rev cs)
 	     with 
-		 (* BUG --- need to remember declared rewrites *)
+	       (* BUG --- need to remember declared rewrites *)
 	       _ -> (
-		 try_parse_singular_let (List.rev cs)
-			|> some
-			|> (tableau sources tables)
-	       ))
+	       try_parse_singular_let (List.rev cs)
+	       |> some
+               |> ir sources tables [] 
+	     ))
 	   in
-	   let lambda = calculate tables in
+	   let lambda = postcalc tables in
 	   let _ = print_string ("\n\t: " ^ lchr lambda) in
 	   let _ = print_string "\n\n" in
 	   let _ = prompt () in
 	   let _ = flush stdout in
-	   aero [] (List.tl tables) sources (Some (List.hd tables))
+	   aero [] (List.tl tables) sources (Some (List.hd tables)) lambda
 	 with
 	   _ ->
-	     aero cs tables sources main
+	     aero cs tables sources main lambda
        )
 		
        | _ ->
-	  aero cs tables sources main
+	  aero cs tables sources main lambda
   in
 
 
-  match aero [] [] emptymap None with
+  match aero [] [] emptymap None (O "") with
   | true ->
      ()
 
@@ -4251,7 +4486,7 @@ match Array.length (Sys.argv) with
 | _ ->
    let prefix = () |> filename |> prefix in
    begin
-     () |> filename |> str_file |> charlistof |> scratch |>
+     () |> filename |> scratch_file |>
 	 fun (tables, sources) -> 
 	   Array.iter
 	     (fun arg -> process_arg tables sources prefix arg)
@@ -4272,14 +4507,6 @@ todo:
 
 pattern matching
 
-argument pruning
+ir argument pruning
 
-inline parsing
-
-native proof
-
-garbage collection
-
-whitepaper
-  
 *)

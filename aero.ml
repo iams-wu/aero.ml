@@ -1,20 +1,13 @@
 (* 
-    aero.ml
+    aero.ml is free and can be redistributed or modified 
 
-    This program, hereby known as "the Program" is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License Version 2 published
+    - under the terms of the GNU General Public License Version 2 published
     in June 1991
 
-    This program is distributed in the hope that it will be useful,
     but without any warranty; without even the implied warranty of
     merchantability or fitness for a particular purpose.
 
-    contact @yithump
-
-    copyleft -- april 2017    
 *)
-
-let version = "2.0.1.7.0.5" ;;
 
 let isnative name = 
   match name with
@@ -200,7 +193,7 @@ let mapi f l i =
 
 let unionmap m1 m2 =
   IMap.fold 
-    (fun key data accmap -> IMap.add key data accmap)
+    (fun cey data accmap -> IMap.add cey data accmap)
     m1
     m2
 ;;
@@ -240,15 +233,15 @@ let binopt string =
   "~" ^ string ^ "~"
 ;;
     
-let add_all kvpl map =
+let add_all kcpl map =
   List.fold_left
     (fun map (k , v) -> IMap.add k v map)
     map
-    kvpl
+    kcpl
 ;; 
 
 let instantiate_map kvpl = 
-  add_all kvpl emptymap
+  add_all kcpl emptymap
 ;;
 
 let rec repeat x n =
@@ -264,19 +257,19 @@ let lines c =
   | _ -> false
 ;;
 
-let lexline = function
+let lecline = function
   | '\n' | '\r' -> true
   | _ -> false
 ;;
 
-let lexws = function
+let lecws = function
   | ' ' | '\t' -> true
-  | x -> lexline x
+  | x -> lecline x
 ;;
 
 let rec wstrim flip xs =
   match xs with
-  | x :: xs when lexws x ->
+  | x :: xs when lecws x ->
      wstrim true xs
 
   | _ when flip ->
@@ -290,7 +283,7 @@ let wstrim = wstrim true ;;
 
 let rec rescape acc already xs =
   match xs with
-  | x :: xs when lexws x -> (
+  | x :: xs when lecws x -> (
     match already with
     | true  -> rescape acc true xs
     | false -> rescape ( ' ' :: acc ) true xs
@@ -372,11 +365,11 @@ type term =
       
 type tree = Term of term | Stringlist of string list | String of string | Bool of bool | Matchlist of ( term * term ) list ;;
 
-type lexon = Id of string | TFin of char list ;;
+type lecon = Id of string | TFin of char list ;;
 
-type token = Lparen | Rparen | Rex | TLet | In | TFun | Tpp | Delim | TRewrite | TMatch | TBar ;;
+type tocen = Lparen | Rparen | Rec | TLet | In | TFun | Tpp | Delim | TRewrite | TMatch | TBar ;;
 
-type runelement = Lexon of lexon | Token of token  | Tree of tree ;;
+type runelement = Lecon of lecon | Tocen of tocen  | Tree of tree ;;
 
 type aero =
   | Let of bool * string * string list * aero * aero
@@ -385,23 +378,23 @@ type aero =
 ;;
                    
 let parse cs =
-  let lexid x = not (lexws x) in
+  let lecid x = not (lecws x) in
   
-  let rec lexidseq cs run = 
+  let rec lecidseq cs run = 
     match cs with  
       | [] -> 
 	let idseq = List.rev run in
 	idseq , []
 
       | x :: cs ->
-	if lexid x then
-	  lexidseq cs (x :: run)
+	if lecid x then
+	  lecidseq cs (x :: run)
 	else
 	  let idseq = List.rev run in
 	  idseq , ( x :: cs )
   in
 
-  let lexidseq cs = 
+  let lecidseq cs = 
     match cs with       
     | '\"' :: cs ->
        let rec match_end cs' run =
@@ -414,35 +407,35 @@ let parse cs =
 	    match_end cs (x :: run)
 
 	 | [] ->
-	    lexidseq cs []
+	    lecidseq cs []
        in
        match_end cs ['\"']
 
-    | _ -> lexidseq cs []
+    | _ -> lecidseq cs []
   in
 
-  let rec lexwsseq cs =
+  let rec lecwsseq cs =
     match cs with
       | [] -> []
       | [ x ] -> 
-	 if lexws x then
+	 if lecws x then
 	   []
 	 else
 	   cs
 
       | [ x ; y ] ->
-	 if lexws x then
-	   lexwsseq [ y ]
+	 if lecws x then
+	   lecwsseq [ y ]
 	 else
 	   cs
 	   
       | x :: y :: z :: cs ->
-	if lexws x then
-	  lexwsseq (y :: z :: cs)
+	if lecws x then
+	  lecwsseq (y :: z :: cs)
 	else if x = '~' && y = '~' && z = '~' then
 	  let rec fe cs =
 	    match cs with
-	    | '~' :: '~' :: '~' :: cs -> lexwsseq cs
+	    | '~' :: '~' :: '~' :: cs -> lecwsseq cs
 	    | _ :: cs -> fe cs
 	    | [] -> []
 	  in
@@ -450,7 +443,7 @@ let parse cs =
 	else if x = '~' && y = '~' then
 	  let rec fe cs = 
 	    match cs with
-	      | '\n' :: cs -> lexwsseq cs
+	      | '\n' :: cs -> lecwsseq cs
 	      | _ :: cs -> fe cs
 	      | [] -> []
 	  in 
@@ -459,7 +452,7 @@ let parse cs =
 	  x :: y :: z :: cs
   in
 
-  let rec lextype cs run =
+  let rec lectype cs run =
     match cs with
     (* pi *)
     | '\206' :: '\160' :: cs -> run , cs
@@ -484,96 +477,96 @@ let parse cs =
   in
   
 
-  let rec lexargs delim cs run =    
-    let idseq, cs = lexidseq cs in
+  let rec lecargs delim cs run =    
+    let idseq, cs = lecidseq cs in
     match idseq with
     | [] -> run , cs
     | ':' :: ':' :: [] ->
-       let cs = lexwsseq cs in
-       let run, cs = lextype cs run in
+       let cs = lecwsseq cs in
+       let run, cs = lectype cs run in
        run , cs
        
     | _ when idseq = delim ->
-       (Token Delim) :: run , cs       
+       (Tocen Delim) :: run , cs       
 
     | _ ->
        let id = stringof idseq in
-       let cs = lexwsseq cs in
-       lexargs delim cs ((Lexon (Id id)) :: run)
+       let cs = lecwsseq cs in
+       lecargs delim cs ((Lecon (Id id)) :: run)
   in
 
-  let rec lexhead delims cs run =
-    let cs = lexwsseq cs in
-    let idseq, cs = lexidseq cs in
+  let rec lechead delims cs run =
+    let cs = lecwsseq cs in
+    let idseq, cs = lecidseq cs in
     match idseq with
     | '(' :: [] ->
-       let cs = lexwsseq cs in
-       lexhead delims cs ((Token Lparen) :: run)
+       let cs = lecwsseq cs in
+       lechead delims cs ((Tocen Lparen) :: run)
 
     | [] ->
        List.rev run, []
 	  
     | _ ->
-       let cs = lexwsseq cs in
-       _lexhead delims cs ((Lexon (TFin idseq)) :: run)	  
+       let cs = lecwsseq cs in
+       _lechead delims cs ((Lecon (TFin idseq)) :: run)	  
 
-  and _lexhead delims cs run =
-    let cs = lexwsseq cs in
-    let idseq, cs' = lexidseq cs in
+  and _lechead delims cs run =
+    let cs = lecwsseq cs in
+    let idseq, cs' = lecidseq cs in
     match idseq with
     | ')' :: [] ->
-       _lexhead delims cs' ((Token Rparen) :: run)
+       _lechead delims cs' ((Tocen Rparen) :: run)
 
     | x when List.mem x delims ->
        run, cs'
 	 
     | _ ->
-       lexhead delims cs (Token Tpp :: run)
+       lechead delims cs (Tocen Tpp :: run)
   in
 
-  let rec lexterm cs run =
-    let cs = lexwsseq cs in
-    let idseq , cs = lexidseq cs in
+  let rec lecterm cs run =
+    let cs = lecwsseq cs in
+    let idseq , cs = lecidseq cs in
     match idseq with
     | 'l' :: 'e' :: 't' :: [] ->
-       let cs = lexwsseq cs in
-       let idseq , cs = lexidseq cs in
-       let run = Token TLet :: run in
+       let cs = lecwsseq cs in
+       let idseq , cs = lecidseq cs in
+       let run = Tocen TLet :: run in
        (match idseq with
 	| 'r' :: 'e' :: 'c' :: [] ->
-	   let cs = lexwsseq cs in
-	   let idseq , cs = lexidseq cs in
+	   let cs = lecwsseq cs in
+	   let idseq , cs = lecidseq cs in
 	   let id = stringof idseq in
-	   let cs = lexwsseq cs in
-	   let run , cs = lexargs ['='] cs ((Lexon (Id id)) :: (Token Rex) :: run) in
-	   let cs = lexwsseq cs in
-	   lexterm cs run
+	   let cs = lecwsseq cs in
+	   let run , cs = lecargs ['='] cs ((Lecon (Id id)) :: (Tocen Rec) :: run) in
+	   let cs = lecwsseq cs in
+	   lecterm cs cun
                    
 	| idseq ->
 	   let id = stringof idseq in
-	   let cs = lexwsseq cs in
-	   let run , cs = lexargs ['='] cs ((Lexon (Id id)) :: run) in
-	   let cs = lexwsseq cs in
-	   lexterm cs run
+	   let cs = lecwsseq cs in
+	   let run , cs = lecargs ['='] cs ((Lecon (Id id)) :: run) in
+	   let cs = lecwsseq cs in
+	   lecterm cs run
        )
 
     | 'm' :: 'a' :: 't' :: 'c' :: 'h' :: [] ->
-       let cs = lexwsseq cs in
-       let run, cs = lexhead [['w'; 'i'; 't'; 'h']] cs (Token TMatch :: run) in
-       let cs = lexwsseq cs in
-       let idseq, cs = lexidseq cs in
+       let cs = lecwsseq cs in
+       let run, cs = lechead [['w'; 'i'; 't'; 'h']] cs (Tocen TMatch :: run) in
+       let cs = lecwsseq cs in
+       let idseq, cs = lecidseq cs in
        let cs =
          match idseq with
          | '|' :: [] -> cs
          | _ -> idseq @ cs
        in
        let rec parse_matches cs run =
-         let cs = lexwsseq cs in
+         let cs = lecwsseq cs in
          let delims = [['-'; '>']; ['\226'; '\134'; '\146']] in
-         let run, cs = lexhead delims cs (Token TBar :: run) in
-         let cs = lexwsseq cs in
-         let run, cs = lexterm cs run in
-         let idseq, cs = lexidseq cs in
+         let run, cs = lechead delims cs (Tocen TBar :: run) in
+         let cs = lecwsseq cs in
+         let run, cs = lecterm cs run in
+         let idseq, cs = lecidseq cs in
          match idseq with
          | '|' :: [] -> parse_matches cs run            
          | _ -> run, cs
@@ -581,55 +574,55 @@ let parse cs =
        parse_matches cs run
          
     | 'r' :: 'e' :: 'w' :: 'r' :: 'i' :: 't' :: 'e' :: [] ->
-       let cs = lexwsseq cs in
+       let cs = lecwsseq cs in
        let left_rewrite_delims = [['-';'>'];['\226';'\134';'\146']] in
-       let run, cs = lexhead left_rewrite_delims cs (Token TRewrite :: run) in
-       let cs = lexwsseq cs in
+       let run, cs = lechead left_rewrite_delims cs (Tocen TRewrite :: run) in
+       let cs = lecwsseq cs in
        let right_rewrite_delims = [['i';'n']] in
-       let run, cs = lexhead right_rewrite_delims cs run in
-       lexterm cs (Token In :: run)
+       let run, cs = lechead right_rewrite_delims cs run in
+       lecterm cs (Tocen In :: run)
                
 
     | '\206' :: '\187' :: [] | '\\' :: [] ->
-       let cs = lexwsseq cs in
-       let run , cs = lexargs ['.'] cs ((Token TFun) :: run) in
-       let cs = lexwsseq cs in
-       lexterm cs run
+       let cs = lecwsseq cs in
+       let run , cs = lecargs ['.'] cs ((Tocen TFun) :: run) in
+       let cs = lecwsseq cs in
+       lecterm cs run
 
     | '(' :: [] ->
-       let cs = lexwsseq cs in
-       lexterm cs ((Token Lparen) :: run)
+       let cs = lecwsseq cs in
+       lecterm cs ((Tocen Lparen) :: run)
 
     | [] ->
        List.rev run, []
 	                 
     | _ ->
-       let cs = lexwsseq cs in
-       _lexterm cs ((Lexon (TFin idseq)) :: run)	  
+       let cs = lecwsseq cs in
+       _lecterm cs ((Lecon (TFin idseq)) :: run)	  
 	        
-  and _lexterm cs run = 
-    let idseq , sah = lexidseq cs in
+  and _lecterm cs run = 
+    let idseq , sah = lecidseq cs in
     match idseq with
     | [] -> 
        List.rev run , []
 	                
     | ')' :: [] ->
-       let sah = lexwsseq sah in
-       _lexterm sah ((Token Rparen) :: run)
+       let sah = lecwsseq sah in
+       _lecterm sah ((Tocen Rparen) :: run)
                 
     | 'i' :: 'n' :: [] ->
-       let sah = lexwsseq sah in
-       lexterm sah (Token In :: run)
+       let sah = lecwsseq sah in
+       lecterm sah (Tocen In :: run)
 
     | '|' :: [] -> run, cs
                
-    | _ -> lexterm cs (Token Tpp :: run)
+    | _ -> lecterm cs (Tocen Tpp :: run)
   in
   
   let build run =
     let rec build tail head prev = 
       match head with
-	| Token Delim :: head ->
+	| Tocen Delim :: head ->
 	  let sl = Stringlist [] in
 	  let tail = Tree(sl) :: tail in
 	  build tail head prev 
@@ -639,51 +632,51 @@ let parse cs =
 	  let tail = Tree(sl) :: tail in
 	  build tail head prev 
 
-	| Tree(Term left) :: Token Tpp :: Tree(Term right) :: head ->
+	| Tree(Term left) :: Tocen Tpp :: Tree(Term right) :: head ->
 	  let head = Tree(Term(Qpp(left,right))) :: head in
 	  build tail head prev
 
-	| Token TLet :: Token Rex :: Tree(Stringlist sl) :: Tree(Term subterm) :: Token In :: Tree(Term nexterm) :: head -> 
+	| Tocen TLet :: Tocen Rec :: Tree(Stringlist sl) :: Tree(Term subterm) :: Tocen In :: Tree(Term nexterm) :: head -> 
 	  let tail = Tree(Term(QLet(true, List.hd sl, List.tl sl, subterm, nexterm))) :: tail in 
 	  build tail head prev 
 
-	| Token TLet :: Tree(Stringlist sl) :: Tree(Term subterm) :: Token In :: Tree(Term nexterm) :: head ->
+	| Tocen TLet :: Tree(Stringlist sl) :: Tree(Term subterm) :: Tocen In :: Tree(Term nexterm) :: head ->
            let tail = Tree(Term(QLet(false, List.hd sl, List.tl sl, subterm, nexterm))) :: tail in
            build tail head prev
                 
-	| Token TFun :: Tree(Stringlist args) :: Tree(Term term) :: head ->
+	| Tocen TFun :: Tree(Stringlist args) :: Tree(Term term) :: head ->
 	   let tail = Tree(Term(QFun(args,term))) :: tail in
 	   build tail head prev 
 
-        | Token TBar :: Tree(Term case) :: Tree(Term body) :: Tree(Term next) :: head ->
+        | Tocen TBar :: Tree(Term case) :: Tree(Term body) :: Tree(Term next) :: head ->
            let tail = Tree(Term next) :: Tree(Matchlist [case,body]) :: tail in 
            build tail head prev
 
-        | Token TBar :: Tree(Term case) :: Tree(Term body) :: [] ->
+        | Tocen TBar :: Tree(Term case) :: Tree(Term body) :: [] ->
            let tail = Tree(Matchlist [case,body]) :: tail in 
            build tail [] prev
 
-        | Token TBar :: Tree(Term case) :: Tree(Term body) :: Tree(Matchlist xs) :: head ->
+        | Tocen TBar :: Tree(Term case) :: Tree(Term body) :: Tree(Matchlist xs) :: head ->
            let tail = Tree(Matchlist ((case,body)::xs)) :: tail in
            build tail head prev
 
-        | Token TMatch :: Tree(Term what) :: Tree(Matchlist withs) :: head ->
+        | Tocen TMatch :: Tree(Term what) :: Tree(Matchlist withs) :: head ->
            let tail = Tree(Term(QMatch (what, withs))) :: tail in
            build tail head prev
            
-        | Token Lparen :: Tree(Term term) :: Token Rparen :: head -> 
+        | Tocen Lparen :: Tree(Term term) :: Tocen Rparen :: head -> 
 	   let tail = Tree(Term(QParen term)) :: tail in
 	   build tail head prev 
 	    
-	| Token TRewrite :: Tree(Term lterm) :: Tree(Term rterm) :: Token In :: Tree (Term where) :: head ->
+	| Tocen TRewrite :: Tree(Term lterm) :: Tree(Term rterm) :: Tocen In :: Tree (Term where) :: head ->
 	   let tail = Tree(Term(QRewrite(lterm, rterm, where))) :: tail in
 	   build tail head prev
 
-	| Lexon (Id id) :: head ->
+	| Lecon (Id id) :: head ->
 	  let tail = Tree(String id) :: tail in
 	  build tail head prev 
 
-	| Lexon (TFin idseq) :: head ->
+	| Lecon (TFin idseq) :: head ->
            (match lex_exponential idseq with
            | None ->
               let id = stringof idseq in
@@ -786,7 +779,7 @@ let rec traverse ?(termap=emptymap) term =
 
   
 (* ------------------------------------------------------------------------------------------------------------------*)
-(*                                  The IRS ——— Internal Representation Syntax                                       *)
+(*                                  The IRS ——— Internal Representation Semantics                                    *)
 (* ------------------------------------------------------------------------------------------------------------------*)
 
 
@@ -1024,11 +1017,11 @@ let prep term =
     | QLet ( isrec , name , args , subterm , nexterm ) ->
        let subbound =
 	 if isrec then
-	   let kvpl = List.map (fun x -> x , true) (name :: args) in
-	   add_all kvpl bound
+	   let kcpl = List.map (fun x -> x , true) (name :: args) in
+	   add_all kcpl bound
 	 else
-	   let kvpl = List.map (fun x -> x , true) args in
-	   add_all kvpl bound
+	   let kcpl = List.map (fun x -> x , true) args in
+	   add_all kcpl bound
        in
        let bound =
 	 IMap.add name true bound 
@@ -1251,14 +1244,14 @@ let rec filter_out predicate _in _out list =
 
 let filter_out predicate = filter_out predicate [] [] ;;
 
-let rec take_pre_h reference list =
+let rec tace_pre_h reference list =
   match reference with
   | [] -> List.rev list
   | x :: xs ->
-     take_pre_h xs (List.tl list)
+     tace_pre_h xs (List.tl list)
 ;;
 
-let take_pre reference list = take_pre_h reference (List.rev list)
+let tace_pre reference list = tace_pre_h reference (List.rev list)
 
 let rec app_all what tos =
   match tos with
@@ -1285,7 +1278,7 @@ let desugar_matches term =
 	      app_all what (List.map (fun x -> QFin x) ctors_ref)
 
 	   | ctor :: ctors ->
-	      let args = take_pre ctors_ref (IMap.find ctor argmap) in	      
+	      let args = tace_pre ctors_ref (IMap.find ctor argmap) in	      
 	      let ctormatches, withs = filter_out (fun (core, _, _) -> core = ctor) withs in
 	      match ctormatches with
 	      | [] ->
@@ -1757,7 +1750,7 @@ let postcalc tables =
                    
   in
   let rec abracadabra tabs table abstraction sources = 
-    let rec alakazam tabs instrs abstraction sources i = 
+    let rec alacazam tabs instrs abstraction sources i = 
       match instrs with
 	| [] -> F ( 0 , "" )
 	  
@@ -1798,7 +1791,7 @@ let postcalc tables =
 	      sources
 	  in
 
-	  alakazam
+	  alacazam
 	    tabs
 	    instrs
 	    abstraction
@@ -1829,7 +1822,7 @@ let postcalc tables =
         inyms
     in
     
-    alakazam
+    alacazam
       tabs 
       instrs
       abstraction 
@@ -1865,7 +1858,7 @@ let postsim tables sources prefix =
   |> quickreduce
   |> function
     | fin , red ->
-       let _ = print_string "\nnumber of beta reductions: " in
+       let _ = print_string "\n-reductions-" in
        let _ = print_string (string_of_int red) in 
        let _ = print_string "\n" in
        ()
@@ -2084,28 +2077,28 @@ let evm tables sources =
     Array.append [| Array.length bytes |> pushx |] bytes
   in
 
-  let table_uplook =
+  let table_uplooc =
     List.fold_left
-      (fun uplook table ->
+      (fun uplooc table ->
 	let Table(name, _, _) = table in
-	IMap.add name table uplook)
+	IMap.add name table uplooc)
       emptymap
       tables
   in
 
-  let line_uplook =
+  let line_uplooc =
     ref emptymap 
   in
 
   let headersize = 0x33 in
   
   let line_add name line =
-    line_uplook := IMap.add name (line + headersize) !line_uplook;
-    !line_uplook
+    line_uplooc := IMap.add name (line + headersize) !line_uplooc;
+    !line_uplooc
   in
   
-  let line_lookup name =
-      IMap.find name !line_uplook
+  let line_loocup name =
+      IMap.find name !line_uplooc
   in  
 
   let dependencies_get dep_ops deps evm =
@@ -2116,7 +2109,7 @@ let evm tables sources =
 	   
       | dep :: deps ->
 	 try
-	   let _ = line_lookup dep in
+	   let _ = line_loocup dep in
 	   dg deps dep_ops
 	 with
 	   _ ->
@@ -2189,7 +2182,7 @@ let evm tables sources =
 		 JUMPDEST; (* :caller, !memory, ~ref *)
 	       |]
 	     in
-	     let _1_2 = push (line_lookup "info") in
+	     let _1_2 = push (line_loocup "info") in
 	     let _1_3 = 
 	       [|
 		 SWAP1;
@@ -2312,7 +2305,7 @@ let evm tables sources =
 		 JUMPDEST; (* ..., !lit_0, ..., !lit_{i-1}, :caller, !nargs, !args, !memory, ~arg_i *)
 	       |]
 	     in
-	     let _2_2 = push (line_lookup "eval") in
+	     let _2_2 = push (line_loocup "eval") in
 	     let _2_3 =
 	       [|	     
 		 SWAP2; (* ..., !lit_0, ..., !lit_{i-1}, :caller, !nargs, !args, :eval, ~arg_i, !memory *)
@@ -2380,7 +2373,7 @@ let evm tables sources =
 		 JUMPDEST; (* :caller, !memory, ~ref *)
 	       |]
 	     in
-	     let _1_2 = push (line_lookup "info") in
+	     let _1_2 = push (line_loocup "info") in
 	     let _1_3 =
 	       [|
 		 SWAP1;
@@ -2447,7 +2440,7 @@ let evm tables sources =
 		 SWAP1;
 	       |]
 	     in
-	     let _1_2 = push (line_lookup "info") in
+	     let _1_2 = push (line_loocup "info") in
 	     let _1_3 =
 	       [| (* ..., :caller, !memory, ~arg, ~ref, :info *)
 		 SWAP1; (* ..., :caller, !memory, ~arg, :info, ~ref *)
@@ -2470,7 +2463,7 @@ let evm tables sources =
 
 	       |]
 	     in
-	     let _3_2 = push (line_lookup "copy") in
+	     let _3_2 = push (line_loocup "copy") in
 	     let _3_3 =
 	       [| 
 		 SWAP2; (* ..., :caller, ~arg, :copy, !memory, ~ref *)
@@ -2489,7 +2482,7 @@ let evm tables sources =
 		 POP; (* ..., :caller, ~arg, !memory, ~copy *)
 	       |]		 
 	     in
-	     let _3_5 = push (line_lookup "eval") in
+	     let _3_5 = push (line_loocup "eval") in
 	     let _3_6 =
 	       [|
 		 SWAP2;
@@ -2616,7 +2609,7 @@ let evm tables sources =
 		 JUMPDEST; (* ..., !flag_0, ..., !flag_{i-1}, :caller, !flag, !args, !nargs, !memory, ~arg_i *) 
 	       |]
 	     in
-	     let _2_2 = push (line_lookup "eval") in
+	     let _2_2 = push (line_loocup "eval") in
 	     let _2_3 =
 	       [|	     
 		 SWAP2; (* ..., !flag_0, ..., !flag_{i-1}, :caller, !flag, !args, !nargs, :eval, ~arg_i, !memory *)
@@ -2679,7 +2672,7 @@ let evm tables sources =
 		 JUMPDEST; (* ..., :caller, !memory, !args *)
 	       |]
 	     in
-	     let _1_2 = push (line_lookup "eval") in
+	     let _1_2 = push (line_loocup "eval") in
 	     let _1_3 =
 	       [|
 		 DUP3;
@@ -2696,7 +2689,7 @@ let evm tables sources =
 		 POP;		 
 	       |]
 	     in
-	     let _1_4 = push (line_lookup "eval") in
+	     let _1_4 = push (line_loocup "eval") in
 	     let _1_5 =
 	       [|
 		 SWAP2;
@@ -2715,7 +2708,7 @@ let evm tables sources =
 		 SWAP2;
 	       |]
 	     in
-	     let _1_6 = push (line_lookup "info") in
+	     let _1_6 = push (line_loocup "info") in
 	     let _1_7 =
 	       [|
 		 SWAP1;
@@ -2773,7 +2766,7 @@ let evm tables sources =
 		 ADD;
 	       |]
 	     in
-	     let _2_4 = push (line_lookup "true") in
+	     let _2_4 = push (line_loocup "true") in
 	     let _2_5 =
 	       [|
 		 DUP2;
@@ -2843,7 +2836,7 @@ let evm tables sources =
 		 ADD;
 	       |]
 	     in
-	     let _3_4 = push (line_lookup "false") in
+	     let _3_4 = push (line_loocup "false") in
 	     let _3_5 =
 	       [|
 		 DUP2;
@@ -2871,7 +2864,7 @@ let evm tables sources =
 		 DUP2;
 	       |]
 	     in
-	     let _1_2 = push (line_lookup "expand") in
+	     let _1_2 = push (line_loocup "expand") in
 	     let _1_3 =
 	       [| (* ..., :caller, !memory, !args, !memory, :expand *)		 
 		 SWAP2; (* ..., :caller, !memory, :expand, !memory, !args *)
@@ -2894,7 +2887,7 @@ let evm tables sources =
 		 SWAP1; (* :caller, !memory, ~arg_1, ~arg_0 *)
 	       |]
 	     in
-	     let _1_5 = push (line_lookup "copy") in
+	     let _1_5 = push (line_loocup "copy") in
 	     let _1_6 =
 	       [|
 		 SWAP2;
@@ -3057,7 +3050,7 @@ let evm tables sources =
 		 DUP2; (* ..., :caller, !memory, !args, !memory *)
 	       |]
 	     in
-	     let _1_2 = push (line_lookup "primeval") in
+	     let _1_2 = push (line_loocup "primeval") in
 	     let _1_3 =
 	       [| 
 		 SWAP2; (* ..., :caller, !memory, :primeval, !memory, !args *)
@@ -3104,7 +3097,7 @@ let evm tables sources =
 	 dep_ops, ops
 	   
       | _ ->
-	 let Table ( name, _, instrs ) = IMap.find goal table_uplook in
+	 let Table ( name, _, instrs ) = IMap.find goal table_uplooc in
 	 let rec bodyc body =
 	   match body with
 	   | Local i :: body ->
@@ -3124,7 +3117,7 @@ let evm tables sources =
 		    MLOAD
 		  |]
 		in
-		let _4 = push (line_lookup "app") in
+		let _4 = push (line_loocup "app") in
 		let _5 =
 		  [| (* ..., :caller, !memory, !args, !locals, !local_index, ~head, ~local_i, :app *)
 		    SWAP3; (* ..., :caller, !memory, !args, !locals, :app, ~head, ~local_i, !local_index *)
@@ -3164,7 +3157,7 @@ let evm tables sources =
 		    MLOAD
 		  |]
 		in
-		let _4 = push (line_lookup "app") in
+		let _4 = push (line_loocup "app") in
 		let _5 =
 		  [| (* ..., :caller, !memory, !args, !locals, !local_index, ~head, ~arg_i, :app *)
 		    SWAP3;
@@ -3212,7 +3205,7 @@ let evm tables sources =
 		    SWAP5; (* :caller, !memory, !args, !locals, !local_index, ~ref, ~lit *)
 		  |]
 		in
-		let _4 = push (line_lookup "app") in
+		let _4 = push (line_loocup "app") in
 		let _5 =
 		  [|
 		    SWAP3; (* :caller, !memory, !args, !locals, :app, ~ref, ~lit, !local_index *)
@@ -3302,7 +3295,7 @@ let evm tables sources =
 		  in
 		  bundle bytes 32 (Data 0) |> List.map store_word |> Array.concat
 		in
-		let _7 = push (line_lookup "app") in
+		let _7 = push (line_loocup "app") in
 		let _8 =
 		  [| (* ..., :caller, ~string, !args, !locals, !local_index, ~head, !memory, :app *)
 		    SWAP3;
@@ -3349,10 +3342,9 @@ let evm tables sources =
 	 (* 
 	    Each application within a table maintains the following stack invariant:
 	    
-	    [ ..., :caller, :caller, !args, ~locals ]
+	    [ ..., :call, !reponse, !args, ~locals ]
 
-	    Where !memory is the location in memory pointing to the next area 
-	    of free memory
+	    Where ! is the pointer location in memory - also referred to in c as *
 
 	 *)
 	 let rec subc instrs local_index dep_ops ops = 
@@ -3382,7 +3374,7 @@ let evm tables sources =
 		    SWAP3; (* :caller, !locals, !args, ~ref, !memory *)
 		  |]
 		in
-		let _4 = push (line_lookup "copy") in
+		let _4 = push (line_loocup "copy") in
 		let _5 =
 		  [|
 		    SWAP2;

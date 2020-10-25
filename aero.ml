@@ -240,7 +240,7 @@ let add_all kcpl map =
     kcpl
 ;; 
 
-let instantiate_map kvpl = 
+let instantiate_map kcpl = 
   add_all kcpl emptymap
 ;;
 
@@ -346,7 +346,7 @@ let str_file filename =
   let contents = Bytes.create iclen in
   let _ = really_input ic contents 0 iclen in
   let _ = close_in ic in
-  contents
+  Bytes.to_string contents
 ;;
 
 (* ------------------------------------------------------------------------------------------ *)
@@ -354,13 +354,13 @@ let str_file filename =
 (* ------------------------------------------------------------------------------------------ *)
 
 type term = 
-  | QLet of bool * string * string list * term * term 
-  | Qpp of term * term
-  | QFun of string list * term
-  | QFin of string
-  | QParen of term
-  | QRewrite of term * term * term
-  | QMatch of term * ( ( term * term ) list )
+  | OLet of bool * string * string list * term * term 
+  | Opp of term * term
+  | OFun of string list * term
+  | OFin of string
+  | OParen of term
+  | ORewrite of term * term * term
+  | OMatch of term * ( ( term * term ) list )
 ;;
       
 type tree = Term of term | Stringlist of string list | String of string | Bool of bool | Matchlist of ( term * term ) list ;;
@@ -540,7 +540,7 @@ let parse cs =
 	   let cs = lecwsseq cs in
 	   let run , cs = lecargs ['='] cs ((Lecon (Id id)) :: (Tocen Rec) :: run) in
 	   let cs = lecwsseq cs in
-	   lecterm cs cun
+	   lecterm cs run
                    
 	| idseq ->
 	   let id = stringof idseq in
@@ -633,19 +633,19 @@ let parse cs =
 	  build tail head prev 
 
 	| Tree(Term left) :: Tocen Tpp :: Tree(Term right) :: head ->
-	  let head = Tree(Term(Qpp(left,right))) :: head in
+	  let head = Tree(Term(Opp(left,right))) :: head in
 	  build tail head prev
 
 	| Tocen TLet :: Tocen Rec :: Tree(Stringlist sl) :: Tree(Term subterm) :: Tocen In :: Tree(Term nexterm) :: head -> 
-	  let tail = Tree(Term(QLet(true, List.hd sl, List.tl sl, subterm, nexterm))) :: tail in 
+	  let tail = Tree(Term(OLet(true, List.hd sl, List.tl sl, subterm, nexterm))) :: tail in 
 	  build tail head prev 
 
 	| Tocen TLet :: Tree(Stringlist sl) :: Tree(Term subterm) :: Tocen In :: Tree(Term nexterm) :: head ->
-           let tail = Tree(Term(QLet(false, List.hd sl, List.tl sl, subterm, nexterm))) :: tail in
+           let tail = Tree(Term(OLet(false, List.hd sl, List.tl sl, subterm, nexterm))) :: tail in
            build tail head prev
                 
 	| Tocen TFun :: Tree(Stringlist args) :: Tree(Term term) :: head ->
-	   let tail = Tree(Term(QFun(args,term))) :: tail in
+	   let tail = Tree(Term(OFun(args,term))) :: tail in
 	   build tail head prev 
 
         | Tocen TBar :: Tree(Term case) :: Tree(Term body) :: Tree(Term next) :: head ->
@@ -661,15 +661,15 @@ let parse cs =
            build tail head prev
 
         | Tocen TMatch :: Tree(Term what) :: Tree(Matchlist withs) :: head ->
-           let tail = Tree(Term(QMatch (what, withs))) :: tail in
+           let tail = Tree(Term(OMatch (what, withs))) :: tail in
            build tail head prev
            
         | Tocen Lparen :: Tree(Term term) :: Tocen Rparen :: head -> 
-	   let tail = Tree(Term(QParen term)) :: tail in
+	   let tail = Tree(Term(OParen term)) :: tail in
 	   build tail head prev 
 	    
 	| Tocen TRewrite :: Tree(Term lterm) :: Tree(Term rterm) :: Tocen In :: Tree (Term where) :: head ->
-	   let tail = Tree(Term(QRewrite(lterm, rterm, where))) :: tail in
+	   let tail = Tree(Term(ORewrite(lterm, rterm, where))) :: tail in
 	   build tail head prev
 
 	| Lecon (Id id) :: head ->
@@ -680,11 +680,11 @@ let parse cs =
            (match lex_exponential idseq with
            | None ->
               let id = stringof idseq in
-	      let tail = Tree(Term(QFin id)) :: tail in
+	      let tail = Tree(Term(OFin id)) :: tail in
 	      build tail head prev
 
            | Some(base, sup) ->
-              let term = Qpp(Qpp(QFin "~**~", QFin base), QFin sup) in
+              let term = Opp(Opp(OFin "~**~", OFin base), OFin sup) in
               let tail = Tree(Term term) :: tail in
               build tail head prev
            )
@@ -702,45 +702,45 @@ let parse cs =
     build [] run run
   in
 
-  lexterm cs [] |> fst |> build
+  lecterm cs [] |> fst |> build
 ;;
 
 let rec applyrrs tree =
   match tree with
-  | QLet ( isrec , n , args , st , nt ) ->
-     QLet ( isrec , n , args , applyrrs st , applyrrs nt ) 
+  | OLet ( isrec , n , args , st , nt ) ->
+     OLet ( isrec , n , args , applyrrs st , applyrrs nt ) 
          
-  | Qpp ( l , r ) ->
+  | Opp ( l , r ) ->
      (
-       match Qpp ( applyrrs l , applyrrs r ) with
-       | Qpp ( QLet ( isrec , n , args , st , nt ) , r ) ->
-	  applyrrs ( QLet ( isrec , n , args , st , Qpp ( nt , r ) ) )
+       match Opp ( applyrrs l , applyrrs r ) with
+       | Opp ( OLet ( isrec , n , args , st , nt ) , r ) ->
+	  applyrrs ( OLet ( isrec , n , args , st , Opp ( nt , r ) ) )
                    
-       | Qpp ( QFun ( args , st ) , r ) ->
-	  applyrrs ( QFun ( args , Qpp ( st , r ) ) )
+       | Opp ( OFun ( args , st ) , r ) ->
+	  applyrrs ( OFun ( args , Opp ( st , r ) ) )
 	           
-       | Qpp( l, Qpp ( r1 , r2 ) ) ->
-	  applyrrs ( Qpp ( Qpp ( l , r1 ) , r2 ) )
+       | Opp( l, Opp ( r1 , r2 ) ) ->
+	  applyrrs ( Opp ( Opp ( l , r1 ) , r2 ) )
                    
-       | Qpp (QRewrite (l, r, t), x) ->
-	  applyrrs (QRewrite (l, r, Qpp(t, x)))
+       | Opp (ORewrite (l, r, t), x) ->
+	  applyrrs (ORewrite (l, r, Opp(t, x)))
                    
        | t -> t
      )
        
-  | QFun ( args , st ) ->
-     QFun ( args , applyrrs st )
+  | OFun ( args , st ) ->
+     OFun ( args , applyrrs st )
          
-  | QParen ( t ) -> QParen ( applyrrs t )
+  | OParen ( t ) -> OParen ( applyrrs t )
                          
-  | QRewrite (l, r, t) ->
-     QRewrite (applyrrs l, applyrrs r, applyrrs t)
+  | ORewrite (l, r, t) ->
+     ORewrite (applyrrs l, applyrrs r, applyrrs t)
              
-  | QFin x ->
-     QFin x
+  | OFin x ->
+     OFin x
          
-  | QMatch ( what, withs ) ->
-     QMatch ( applyrrs what, List.map (fun (l, r) -> applyrrs l, applyrrs r) withs )
+  | OMatch ( what, withs ) ->
+     OMatch ( applyrrs what, List.map (fun (l, r) -> applyrrs l, applyrrs r) withs )
 ;;
 
 let parse cs =
@@ -749,21 +749,21 @@ let parse cs =
      applyrrs x , [ Tree ( Term ( x ) ) ]
 
   | run ->
-     QFin "parsing error", run
+     OFin "parsing error", run
 ;;
 
-let rec convQ term =
+let rec convO term =
   match term with
-  | QLet ( rex, nym, args, subterm, nexterm ) ->
-     Let ( rex, nym, args, convQ subterm, convQ nexterm ) 
+  | OLet ( rex, nym, args, subterm, nexterm ) ->
+     Let ( rex, nym, args, convO subterm, convO nexterm ) 
 
-  | Qpp ( l , r ) ->
-     Pp ( convQ l , convQ r )
+  | Opp ( l , r ) ->
+     Pp ( convO l , convO r )
 
-  | QFin ( nym ) ->
+  | OFin ( nym ) ->
      Fin ( nym )
   | _ ->
-     failwith "convQ error: ̈̈\"term\" has not been prepped for conversion to internal representation. Try calling \"ir term\""
+     failwith "convO error: ̈̈\"term\" has not been prepped for conversion to internal representation. Try calling \"ir term\""
 ;;
 
 let rec traverse ?(termap=emptymap) term =
@@ -1005,16 +1005,16 @@ let prep term =
     let rec a acc seq =
       match seq with
       | x :: seq ->
-	 a (Qpp (acc , QFin x)) seq
+	 a (Opp (acc , OFin x)) seq
 
       | [] -> 
 	 acc
     in
-    a (QFin head) seq
+    a (OFin head) seq
   in
   let rec prep term recmap bound = 
     match term with
-    | QLet ( isrec , name , args , subterm , nexterm ) ->
+    | OLet ( isrec , name , args , subterm , nexterm ) ->
        let subbound =
 	 if isrec then
 	   let kcpl = List.map (fun x -> x , true) (name :: args) in
@@ -1029,53 +1029,53 @@ let prep term =
        let subrecmap = add name isrec recmap in
        let subterm = prep subterm subrecmap subbound in
        if isrec then
-	 let nexterm = QLet ( false , name , args , applify name (name :: args) , nexterm ) in 
+	 let nexterm = OLet ( false , name , args , applify name (name :: args) , nexterm ) in 
 	 let nexterm = prep nexterm recmap bound in
-	 QLet ( false , name , name :: args , subterm , nexterm ) 
+	 OLet ( false , name , name :: args , subterm , nexterm ) 
        else
 	 let nexterm = prep nexterm recmap bound in
-	 QLet ( isrec , name , args , subterm , nexterm )
+	 OLet ( isrec , name , args , subterm , nexterm )
 
-    | QFun ( args , subterm ) ->
-       let term = QLet ( false , "~~" , args , subterm , QFin "~~" ) in
+    | OFun ( args , subterm ) ->
+       let term = OLet ( false , "~~" , args , subterm , OFin "~~" ) in
        prep term recmap bound
 
-    | Qpp ( Qpp ( lterm , QFin name ) , rterm ) ->
+    | Opp ( Opp ( lterm , OFin name ) , rterm ) ->
        if not (IMap.mem name bound)
 	 && ((IMap.mem (binopt name) bound)
 	     || isnative (binopt name)) then (
-	   prep (Qpp (Qpp (QFin (binopt name), lterm), rterm)) recmap bound
+	   prep (Opp (Opp (OFin (binopt name), lterm), rterm)) recmap bound
 	 )
        else
-	 let lterm = prep (Qpp (lterm, QFin name)) recmap bound in
+	 let lterm = prep (Opp (lterm, OFin name)) recmap bound in
 	 let rterm = prep rterm recmap bound in
-	 Qpp (lterm, rterm)
+	 Opp (lterm, rterm)
 
-    | Qpp ( lterm , rterm ) ->
+    | Opp ( lterm , rterm ) ->
        let lterm = prep lterm recmap bound in
        let rterm = prep rterm recmap bound in
-       Qpp (lterm, rterm)
+       Opp (lterm, rterm)
 
-    | QFin ( name ) ->
+    | OFin ( name ) ->
        if isrecursive name recmap then
-	 Qpp ( QFin name, QFin name )
+	 Opp ( OFin name, OFin name )
        else
-         QFin name
+         OFin name
               
-    | QParen (term) ->
+    | OParen (term) ->
        prep term recmap bound
 
 
-    | QRewrite ( left, right, term ) ->
+    | ORewrite ( left, right, term ) ->
        let left = prep left recmap bound in
        let right = prep right recmap bound in
        let term = prep term recmap bound in
-       QRewrite ( left, right, term)
+       ORewrite ( left, right, term)
 
-    | QMatch ( what, withs ) ->
+    | OMatch ( what, withs ) ->
        let what = prep what recmap bound in
        let withs = List.map (fun (l,r) -> prep l recmap bound, prep r recmap bound) withs in
-       QMatch (what, withs)
+       OMatch (what, withs)
   in
   prep 
     term
@@ -1085,13 +1085,13 @@ let prep term =
 
 let rec rreq term rl =
   match term, rl with
-  | Qpp (l, r) , Qpp(rll, rlr) ->
+  | Opp (l, r) , Opp(rll, rlr) ->
      rreq l rll && rreq r rlr
 
-  | _ , QFin "~" ->
+  | _ , OFin "~" ->
      true
 
-  | QFin x, QFin y when x = y ->
+  | OFin x, OFin y when x = y ->
      true
 
   | _ -> false
@@ -1101,10 +1101,10 @@ let rreq term rrr = rreq term (fst rrr) ;;
 
 let rec match_left acc term rl =
   match term, rl with
-  | Qpp (l, r), Qpp(ll, rr) ->
+  | Opp (l, r), Opp(ll, rr) ->
      match_left (match_left acc r rr) l ll
 
-  | x, QFin "~" ->
+  | x, OFin "~" ->
      x :: acc
 
   | _ ->
@@ -1113,12 +1113,12 @@ let rec match_left acc term rl =
 
 let rec rewrite rr xs =
   match rr with
-  | Qpp (l, r) ->
+  | Opp (l, r) ->
      let l, xs = rewrite l xs in
      let r, xs = rewrite r xs in
-     Qpp (l, r), xs
+     Opp (l, r), xs
 
-  | QFin "~" ->
+  | OFin "~" ->
      List.hd xs, List.tl xs
 
   | x ->
@@ -1131,40 +1131,40 @@ let rewrite term rrr =
 
 let rec apply_rewrites rewriterules term =
   match term with
-  | QRewrite (left, right, term) ->
+  | ORewrite (left, right, term) ->
      apply_rewrites ((left,right) :: rewriterules) term
 
-  | QLet (isrec, name, args, subterm, nexterm) ->
+  | OLet (isrec, name, args, subterm, nexterm) ->
      let subterm = apply_rewrites rewriterules subterm in
      let nexterm = apply_rewrites rewriterules nexterm in
-     QLet (isrec, name, args, subterm, nexterm)
+     OLet (isrec, name, args, subterm, nexterm)
 
-  | QFun (args, subterm) ->
+  | OFun (args, subterm) ->
      let subterm = apply_rewrites rewriterules subterm in
-     QFun (args, subterm)
+     OFun (args, subterm)
 
-  | Qpp (l, r) when List.exists (rreq term) rewriterules ->
+  | Opp (l, r) when List.exists (rreq term) rewriterules ->
      (
        List.find (rreq term) rewriterules 
 	 |> rewrite term
 	 |> apply_rewrites rewriterules
      )
 
-  | Qpp (l, r) ->
+  | Opp (l, r) ->
      let l = apply_rewrites rewriterules l in
      let r = apply_rewrites rewriterules r in
-     Qpp (l, r)
+     Opp (l, r)
 
-  | QFin x ->
-     QFin x
+  | OFin x ->
+     OFin x
 
-  | QParen term ->
+  | OParen term ->
      apply_rewrites rewriterules term
 
-  | QMatch (what, withs) ->
+  | OMatch (what, withs) ->
      let what = apply_rewrites rewriterules what in
      let withs = List.map (fun (l,r) -> apply_rewrites rewriterules l, apply_rewrites rewriterules r) withs in
-     QMatch (what, withs)
+     OMatch (what, withs)
 ;;
 
 let stringdecl string = 
@@ -1174,20 +1174,20 @@ let stringdecl string =
 	decl
 	  
       | c :: chars ->
-	Qpp ( Qpp ( QFin "cons" , QFin (string_of_int (int_of_char c))) , form chars decl )
+	Opp ( Opp ( OFin "cons" , OFin (string_of_int (int_of_char c))) , form chars decl )
   in
-  form (charlistof (String.sub string 1 (String.length string - 2))) (QFin "nil")
+  form (charlistof (String.sub string 1 (String.length string - 2))) (OFin "nil")
 ;;
   
 let get_core head = 
   match head with
-  | QFin core -> core
+  | OFin core -> core
   | _ -> "~"
 ;;
 
 let rec linearize_apps acc term =
   match term with
-  | Qpp ( left , right ) ->
+  | Opp ( left , right ) ->
      linearize_apps (right :: acc) left
        
   | x ->
@@ -1257,13 +1257,13 @@ let rec app_all what tos =
   match tos with
   | [] -> what
   | x :: tos ->
-     app_all (Qpp ( what, x )) tos
+     app_all (Opp ( what, x )) tos
 ;;
   
 let desugar_matches term =
   let rec dm argmap term = 
     match term with
-    | QMatch ( what, withs ) ->
+    | OMatch ( what, withs ) ->
        let rec generate_term what withs =
 	 let ctors_ref =
 	   (List.map
@@ -1275,7 +1275,7 @@ let desugar_matches term =
 	 let rec proc ctors withs =
 	   match ctors with
 	   | [] ->
-	      app_all what (List.map (fun x -> QFin x) ctors_ref)
+	      app_all what (List.map (fun x -> OFin x) ctors_ref)
 
 	   | ctor :: ctors ->
 	      let args = tace_pre ctors_ref (IMap.find ctor argmap) in	      
@@ -1285,19 +1285,19 @@ let desugar_matches term =
 		 let subterm =
 		   match wildcards with
 		   | [] ->
-		      QFun (["~~"], QFin "~~")
+		      OFun (["~~"], OFin "~~")
 		      
 		   | (_,_,x) :: _ -> x
 		 in
 		 let nexterm = proc ctors withs in
-		 QLet ( false, ctor, args, subterm, nexterm)
+		 OLet ( false, ctor, args, subterm, nexterm)
 
 	      | _ ->
 		 let subterm =
-		   QFin "TODO"
+		   OFin "TODO"
 		 in
 		 let nexterm = proc ctors withs in
-		 QLet ( false, ctor, args, subterm, nexterm )
+		 OLet ( false, ctor, args, subterm, nexterm )
 	 in
 	 proc ctors_ref	withs
        in
@@ -1310,32 +1310,32 @@ let desugar_matches term =
        in
        generate_term what withs
 	 
-    | QLet ( isrec, name, args, subterm, nexterm ) ->
+    | OLet ( isrec, name, args, subterm, nexterm ) ->
        let subterm = dm argmap subterm in
        let argmap = IMap.add name args argmap in
        let nexterm = dm argmap nexterm in
-       QLet ( isrec, name, args, subterm, nexterm )
+       OLet ( isrec, name, args, subterm, nexterm )
 
-    | QFun ( args, subterm ) ->
+    | OFun ( args, subterm ) ->
        let subterm = dm argmap subterm in
-       QFun ( args, subterm )
+       OFun ( args, subterm )
 
-    | Qpp ( left, right ) ->
+    | Opp ( left, right ) ->
        let left = dm argmap left in
        let right = dm argmap right in
-       Qpp ( left, right )
+       Opp ( left, right )
 
-    | QFin x ->
-       QFin x
+    | OFin x ->
+       OFin x
 
-    | QRewrite ( l, r, where ) ->
+    | ORewrite ( l, r, where ) ->
        let l = dm argmap l in
        let r = dm argmap r in
        let where = dm argmap where in
-       QRewrite ( l, r, where )
+       ORewrite ( l, r, where )
 
-    | QParen t ->
-       QParen ( dm argmap t )
+    | OParen t ->
+       OParen ( dm argmap t )
   in
   dm
     emptymap
@@ -1869,10 +1869,10 @@ let postsim tables sources prefix =
 Final methods to get both the lambda calculus translations, in expanded and fully reduced forms
 
 *)
-let preloa_ str = str |> charlistof |> parse |> fst |> prep |> convQ |> loa |> (fun t -> lchr t , lchr (beta t |> fst)) ;;
+let preloa_ str = str |> charlistof |> parse |> fst |> prep |> convO |> loa |> (fun t -> lchr t , lchr (beta t |> fst)) ;;
 let preloa file = preloa_ (str_file file) ;; 
 
-let postloa_ str = str |> charlistof |> parse |> fst |> prep |> convQ |> tableau emptymap [] |> (fun (ts, ss) -> postcalc ts) |> (fun t -> lchr t , lchr (quickreduce t |> fst)) ;;
+let postloa_ str = str |> charlistof |> parse |> fst |> prep |> convO |> tableau emptymap [] |> (fun (ts, ss) -> postcalc ts) |> (fun t -> lchr t , lchr (quickreduce t |> fst)) ;;
 let postloa file = postloa_ (str_file file) ;;
 
 
@@ -3426,7 +3426,7 @@ let evm tables sources =
 		    SWAP3;
 		  |]
 		in
-		let _4 = push (line_lookup "copy") in
+		let _4 = push (line_loocup "copy") in
 		let _5 =
 		  [|
 		    SWAP2;
@@ -3606,7 +3606,7 @@ let evm tables sources =
 		    ADD
 		  |]
 		in
-		let _5 = push (line_lookup p) in
+		let _5 = push (line_loocup p) in
 		let _6 =
 		  [|
 		    DUP2;
@@ -3644,7 +3644,7 @@ let evm tables sources =
 		| _ -> ["app";g]
 	      in
 	      let dep_ops = dependencies_get dep_ops deps evm in
-	      let Table(_, args, _) = IMap.find g table_uplook in
+	      let Table(_, args, _) = IMap.find g table_uplooc in
               let numargs = List.length args in
 	      let ops =
 		let _1 =
@@ -3670,7 +3670,7 @@ let evm tables sources =
 		    ADD; (* ..., :caller, !memory, !args, !locals, !memory+1 *) 
 		  |]
 		in
-		let _4 = push (line_lookup g) in
+		let _4 = push (line_loocup g) in
 		let _5 =
 		  [|
 		    DUP2;
@@ -3716,7 +3716,7 @@ let evm tables sources =
 		    POP
 		  |]
 		in
-		let _3 = push (line_lookup "eval") in
+		let _3 = push (line_loocup "eval") in
 		let _4 = [| JUMP |] in
 		
 		Array.concat [ ops; _1; _2; _3; _4 ] 
@@ -3742,7 +3742,7 @@ let evm tables sources =
 		    MLOAD;
 		  |]
 		in
-		let _4 = push (line_lookup "eval") in
+		let _4 = push (line_loocup "eval") in
 		let _5 =
 		  [|
 		    JUMP
@@ -3869,7 +3869,7 @@ let evm tables sources =
 	   | Return (Global g) :: instrs ->
 	      let deps = [ g ] in
 	      let dep_ops = dependencies_get dep_ops deps evm in
-	      let Table(_, args, _) = IMap.find g table_uplook in
+	      let Table(_, args, _) = IMap.find g table_uplooc in
               let numargs = List.length args in
 	      let ops =
 		let _1 =
@@ -3895,7 +3895,7 @@ let evm tables sources =
 		    ADD;
 		  |]
 		in
-		let _4 = push (line_lookup g) in
+		let _4 = push (line_loocup g) in
 		let _5 =
 		  [|
 		    DUP2;
@@ -3918,7 +3918,7 @@ let evm tables sources =
 		    POP;
 		  |]
 		in
-		let _8 = push (line_lookup "eval") in
+		let _8 = push (line_loocup "eval") in
 		let _9 = [| JUMP |] in
 		Array.concat [ ops; _1; _2; _3; _4; _5; _6; _7; _8; _9 ]		
 	      in
@@ -4045,7 +4045,7 @@ let evm tables sources =
       let fill = headersize - Array.length _2 - 1 in
 
       let _ =
-	let size = box (line_lookup "main") None |> Array.length in
+	let size = box (line_loocup "main") None |> Array.length in
 	if fill < size then
 	  let _ = print_string ("Header overflowed, needs to be adjusted up by " ^ (string_of_int (size-fill))) in
 	  ()
@@ -4054,7 +4054,7 @@ let evm tables sources =
       Array.concat
       [
 	[| pushx fill |];
-	box (line_lookup "main") (Some fill);
+	box (line_loocup "main") (Some fill);
       ]
     in
     
@@ -4281,7 +4281,7 @@ let ir sources tables rrs term =
   term
   |> prep
   |> apply_rewrites rrs
-  |> convQ
+  |> convO
   |> tableau sources tables
 ;;
 
@@ -4311,7 +4311,7 @@ let precalc str =
             |> fst
             |> prep
             |> apply_rewrites []
-            |> convQ
+            |> convO
             |> loa
   in
   lchr loa  
@@ -4319,17 +4319,19 @@ let precalc str =
 
 let try_parse_singular_let cs =
   match parse cs |> snd with
-  | Token TLet :: Token Rex :: Tree(Stringlist sl) :: Tree(Term subterm) :: Token In :: [] ->
-     let term = QLet (true, List.hd sl, List.tl sl, subterm, QFin (List.hd sl)) in
+  | Tocen TLet :: Tocen Rec :: Tree(Stringlist sl) :: Tree(Term subterm) :: Tocen In :: [] ->
+     let term = OLet (true, List.hd sl, List.tl sl, subterm, OFin (List.hd sl)) in
      Some term
 
-  | Token TLet :: Tree(Stringlist sl) :: Tree(Term subterm) :: Token In :: [] ->
-     let term = QLet (false, List.hd sl, List.tl sl, subterm, QFin (List.hd sl)) in
+  | Tocen TLet :: Tree(Stringlist sl) :: Tree(Term subterm) :: Tocen In :: [] ->
+     let term = OLet (false, List.hd sl, List.tl sl, subterm, OFin (List.hd sl)) in
      Some term
 
   | _ ->
      None     
 ;;
+
+let version = " w " 
 
 let preamble () = 
   print_string ("

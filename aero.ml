@@ -1858,6 +1858,7 @@ let postsim tables sources prefix =
   |> quickreduce
   |> function
     | fin , red ->
+       let _ = print_string (lchr fin) in 
        let _ = print_string "\n-reductions-" in
        let _ = print_string (string_of_int red) in 
        let _ = print_string "\n" in
@@ -3971,8 +3972,9 @@ let evm tables sources =
     let line = Array.length dep_ops in
     let _ = line_add goal line in
     Array.append dep_ops ops    
-  in
-  let ops = evm "main" [||] in
+  in 
+
+(*
   let len = Array.length ops + headersize in
   let load_call =
     Array.concat
@@ -4061,13 +4063,14 @@ let evm tables sources =
     
     Array.concat [ _1; _2 ] 
   in
+ *)
   
   Array.concat
     [
-      load_call;
-      header;
-      ops;
-      loader;
+      (* load_call; *)
+      (* header; *)
+      evm "main" [||];
+      (* loader; *)
     ]
 ;;
 

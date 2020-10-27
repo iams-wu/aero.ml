@@ -1,4 +1,4 @@
-~~~
+,~~~
 (*
   
 aero.ml
@@ -51,7 +51,7 @@ let pair x y sel = sel x y in
 let ~,~ = pair in
 
 
-
+ 
 
 let aero = "A --- dialectically ML --- Programming Language" in
 
@@ -79,55 +79,15 @@ in
 
 aero
 
+~~~~~~
+wad.js
+
+let output = Unix.system("ocaml aero.ml ueens.ml web3");
+let conf = output == "wrote to ueens.js";
+let output' = loadScript("ueens.js");
+let conf' = output.includes("Contract mined!");                       
+let pub = eth.getTransactionReceipt(test.transactionHash).contractAdress;
+test_contract.at(pub).run();
 
 
-  ~~~
-(*
 
-~
-
-example --- running in bash / geth
-
-~
- 
-(bash)$ ocaml aero.ml example.ml web3  
-	wrote to example.js
-
-(geth)$ loadScript example.js
-
-   ...
-
-(geth)$ test.run.call ()
-
-   ...
-
-~
-  
-example --- running interactively 
-
-~
-
-(aero)> let false ff tt = ff in
-
-        : ll|~
-
-
-(aero)> let true ff tt = tt in 
-
-	: ll||~
-
-
-(aero)> let and x y = x false y in
-
-	: llaa|~ll|~||~
-
-
-(aero)> and false true
-
-	: aallaa|~ll|~||~ll|~ll||~
-
-
-(aero)> web3
-        wrote to ~.js                       
-
-*)

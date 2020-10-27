@@ -29,6 +29,11 @@ in
 
 let ~|>~ x y = y x in
 
-( true :: false :: true :: false :: true :: false :: true :: false :: true :: [] )
+
+str_bool true
+
+~~~~~~
+
+  ( true :: false :: true :: false :: true :: false :: true :: false :: true :: [] )
 |> ( map not )
 |> ( str_list str_bool )

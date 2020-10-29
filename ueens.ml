@@ -109,6 +109,7 @@ let thirtynine = suc thirtyeight in
 let forty = suc thirtynine in
 let fortyone = suc forty in
 let fortytwo = suc fortyone in
+let fortythree = suc fortytwo in
 
 let rec fact n =
   let zero = one in

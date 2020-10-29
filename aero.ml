@@ -4069,7 +4069,7 @@ let evm tables sources =
     [
       (* load_call; *)
       (* header; *)
-      evm "main" [||];
+      evm "main" [||]
       (* loader; *)
     ]
 ;;
@@ -4088,7 +4088,7 @@ let web3_generate program prefix =
       List.map hr_byte |>
       (fun bytes -> "0x" :: bytes) |>
       Array.of_list |>
-      (fun bytes -> bundle bytes 42 "") |>
+      (fun bytes -> bundle bytes 43 "") |>
       List.map (Array.to_list) |>
       List.map (cat "") |>
       cat "' +\n\t  '"
@@ -4112,7 +4112,7 @@ var test_contract = web3.eth.contract(
 var test = test_contract.new(
   {
     from: web3.eth.accounts[0],
-    data: '" ^ str ^ "'
+    data: '" ^ str ^ "',
     gas: '4700000'
   },
   function (e, contract){

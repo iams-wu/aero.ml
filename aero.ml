@@ -2094,7 +2094,7 @@ let evm tables sources =
   let headersize = 0x33 in
   
   let line_add name line =
-    line_uplooc := IMap.add name (line + headersize) !line_uplooc;
+    line_uplooc := IMap.add name (line(* + headersize*)) !line_uplooc;
     !line_uplooc
   in
   
